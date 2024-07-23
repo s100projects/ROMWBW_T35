@@ -1,0 +1,17 @@
+// FPGA projects using Verilog/ VHDL
+// fpga4student.com: FPGA projects, Verilog projects, VHDL projects
+// Verilog code for down counter
+module down_counter(input clk, reset, output [3:0] counter
+    );
+reg [3:0] counter_down;
+
+// down counter
+always @(posedge clk or posedge reset)
+begin
+if(reset)
+ counter_down <= 4'hf;
+else
+ counter_down <= counter_down - 4'd1;
+end 
+assign counter = counter_down;
+endmodule

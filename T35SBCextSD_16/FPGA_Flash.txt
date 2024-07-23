@@ -1,0 +1,47 @@
+Burning FPGA Code to Flash RAM
+Up until now whenever we programmed our FPGA via  the JTAG socket the data is lost whenever the power is turned off.   While fine for code development etc. it is not desirable for a final board configuration.  Like most FPGA applications the "final" code is saved in Flash RAM and immediately loaded by the FPGA each time upon power-up.  This is a standard and common characteristic of most FPGA's. Some older models in fact had a ROM onboard.    Our Cyclone IV Adaptor board has 16MB of Flash RAM on board for this purpose -- way more than we are ever going to need!
+
+The tricky part is programming this Flash RAM.  I found the Intel documentation poor and confusing.  Here is a summary of the process: 
+Within Quartus you need to "convert" your normal JTAG FPGA .sof programming file to a special file .jic to program the Serial Flash RAM chip on the Weveshare board.
+
+Within Quartus, click on the File Menu and select "Convert Programming files". The dialog box below will popup.
+From the dropdown box on the "Programming File Type"  select a .jic file type.
+This is the file format that is required to program the onboard serial Flash RAM.
+For the Options/Boot info select EPCS16. Leave Active Serial as is.
+You can name the .jic output file anything you like. I usually just leave it output_file.jic.
+Note it will be in the Quartus generated "output_files" folder within your work directory.
+
+Next click on Flash loader within the lower "Input Files to Convert", then click on the highlighted "Add Device" button.
+You will get a popup dialog box as shown below.
+Select Cyclone IV  and EP4CE10.  Note Quartus takes some time to allow you to actually select these options -- seems to be doing things in the background!
+Next click on "SOF Data" and "Add File".  You should see your "normal" FPGA program .sof file in your "output_files" folder within your work directory.
+Finally click the "Generate" button.
+You should get a popup dialog saying "Generated output_file.jic successfully.
+Note the name and location of the converted file. Then close that dialog box.  See the pictures below.
+
+Two things, first for some reason Quartus often takes a long time (~30 seconds) to locate/display the directory (usually output files) you want to deposit the .jic file
+Second, in the next step its essential you point to the correct jic file you just made.  If in doubt, label it xxxx.jic above. 
+                
+   	Programming 1	   	Programming 2
+ 
+Programming 3		Programming 4
+ 	 
+Programming 5		
+  
+Next we need to actually flash the Waveshare boards RAM chip.
+Click on the normal "Program Device (Open Programmer)" you normally use. If its not already open,  give it time to come up as a dialog box.
+Make sure your board has power.  To be safe click the Auto Detect button. your normal xxx.sof file should display with the device set as EP4CE10F17.
+
+First delete the above line xxx.sof  |  EP4CE10F17 etc.
+Click on Add File and select the output_file.jic file you just generated above.
+Click on the Program/Configure little square character boxes.
+The chip diagram below should show only 2 chips as shown. If more right click on any 'extra' one and delete it. The dialog box must look as shown below.
+The Start button should highlight.
+Click on this and you will flash the RAM chip.  Follow the Progress bar until it is done -- it takes about 1 minute.
+You can power off and re-power your computer.
+Your FPGA board should (after reset), start with whatever FPGA code is within the chip.
+     
+Programming 8	
+ 
+Note when you close the above dialog box, normally you do NOT save the changes.
+Typically you want the chip to be quickly reprogrammable with .sof files.
