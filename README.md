@@ -1,4 +1,4 @@
-# T35 Z80 Firmware for RomWBWW
+# T35 Z80 Firmware for RomWBW
 
 This repository hosts the files required to build firmware for the S100 Computers
 Z80 FPGA SBC with a T35 Module.  The resulting firmware can be used to load
