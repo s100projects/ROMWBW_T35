@@ -20,10 +20,10 @@ firmware.
 
 ## Installing & Running RomWBW
 
-You will need to do two things:
+In summary, you will need to do two things:
 
 1. Program your T35 with the firmware built from this repository.
-2. Write the a RomWBW disk image to either an SD or CF Card.
+2. Write a RomWBW disk image to either an SD or CF Card.
 
 After building the T35 firmware as described above, you will need to use the Efinity
 Programmer to program the T35 module.  Use the programmer to write the T35SBCextSD_16.hex
