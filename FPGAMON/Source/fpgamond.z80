@@ -1,0 +1,1095 @@
+;	SBC-MON2.Z80  This is a stripped down version of the main MASTER-Z80 (and SBC-MON.Z80 monitor) programs 
+;	for use with the S100 bus Z80-FPGA SBC. It will not work with other Z80 CPU Boards without modifications.
+; 
+;	Assemble and SLR's Z80ASM Assembler (Can also use the Cromemco Assembler)
+;	Use:- Z80ASM SBC-MON FH
+;
+;	NOTE. This board initially utilizes an 16K FPGA ROM module (which behaves the same as a "real" 28C128 EEPROM) 
+;	Normally the code resides in four 4K "pages" that can be swapped in one at a time to the Z80 code space
+;	at F000H-FFFFH. Currently only 3 pages are used. The code in each page is completely self contained and does
+;	not access code in othe pages. All pqages have a common jump table and address switching routine at the start 
+;	of each page.  The location of these jumps etc. must be idential in allpages.
+;	The pages are named Z80-MONA.Z80, Z80-MONB.Z80 & Z80-MONC.Z80
+;
+;	To assemble under windows...
+;	Load Altair.EXE in Windows CMD box
+;	do cpm3
+;	I:
+;	I:>Submit SBC-MONC.SUB etc.
+;
+;	There is a submit file for each page.
+;
+;	SBC-MON2.HEX  is written back to the same windows folder that the PC file "altair.exe" is in.
+
+;	The 2 (or later 3) HEX files need to be combined and loaded into the FPGA as one large .HEX file.
+;	Please see here for a discription as to how to do this.
+;	http://s100computers.com/My%20System%20Pages/FPGA%20Z80%20SBC/FPGA%20Z80%20SBC.htm
+;
+;	Recent History...
+;
+;	V1.0	4/30/2019	Started with the modified MASTER.Z80 V5.1 Monitor. Removed the page switching menu option.
+;	V1.01	7/20/2019	Added printer output
+;	V2.0	8/21/2019	Added a third page for SD Cards
+;	V2.1	7/6/2023	Added speech synthesizer output, activate Z8530 ports
+;	V2.2	7/9/2023	Add OTIR long hand in 8080 code format to initilize Z8530s
+;	V2.23	7/10/2023	Added clock speed adjustment for Z8530 serial ports
+;	V2.31	7/30/2023	Corrected OTIR code in Microcomputer.bsf file
+;	V2.31b  7/31/2023       Total code checkout/rebuild
+;	V3.0	8/6/2023	Added 4th ROM page with RTC diagnoatic code
+;	V3.01	5/22/2024	[WBW] Supported USB Serial on all pages
+;	V3.02	6/26/2024	[WBW] Converted IDE CPM Boot to RomWBW load
+;	V3.03	7/4/2024	[WBW] Switched RTC SPI to 8-bit interface
+;	V3.04	7/5/2024	[WBW] Enhanced SD Card protocol handling
+;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
+;
+FALSE		EQU	0
+TRUE		EQU	NOT FALSE
+;
+;--------------------------------------------------------
+;        Basic MONITOR Routines		Page #0/Power-up
+;        IDE Routines			Page #1
+;        SD Card Routines		Page #2
+;--------------------------------------------------------
+;
+;
+MONITOR_BASE	EQU	0F000H		;Start of monitor after a reset								
+RAM_BASE	EQU	0C000H		;Default location of RAM buffer area for IDE/CF card diagnostic routines
+					;Can be changed with "D" IDE menu command
+
+SCROLL		EQU	01H					
+BELL		EQU	07H
+SPACE		EQU	20H
+TAB		EQU	09H		;TAB ACROSS (8 SPACES FOR SD-BOARD)
+CR		EQU	0DH
+LF		EQU	0AH
+FF		EQU	0CH
+QUIT		EQU	11H		;Turns off any screen enhancements (flashing, underline etc).
+NO_ENH		EQU 	17H		;Turns off whatever is on
+FAST		EQU	10H		;High speed scroll
+ESC		EQU	1BH
+DELETE		EQU	7FH
+BACKS		EQU	08H
+CLEAR		EQU	1AH		;TO CLEAR SCREEN
+RST7		EQU	38H		;RST 7 (LOCATION FOR TRAP)
+NN		EQU	0H		;[I] INITIAL VALUE
+SOH		EQU	1		;For XModem etc.
+EOT		EQU	4
+ACK		EQU	6
+NAK		EQU	15H
+;
+
+; Note on the mapping below: The DIP switches on the physical board connect to GND with pull up resistors 
+; OPEN/OFF switches are '1's and CLOSED/ON DIP switches are '0's
+;
+; BIT MAP OF IOBYTE BASE_PORT + 6H:- X X X X  X X X X  (if xxxxx111= 111 = CONSOLE IN/OUT DATA for all Console IO board
+;			             | | | |  | | | |..............  110 = will use onboard USB chip for ALL Console I/O
+;			             | | | |  | | |................  x0x = will force/override onboard FPGA code, to PS2 keyboard input 
+;			             | | | |  | |..................  0xx = will force/override, VGA for Console output
+;			             | | | |  |....................  0 = Send Console Data to Printer as well as console.
+;			             | | | |.......................  Unused			
+;			             | | |.........................  Unused							 
+;			             | |...........................  Unused
+;			     	     |.............................  0 Low Speed Clock for CPU (2mHz).
+;
+;
+;
+
+BASE_PORT	EQU	30H		;Note by using 30H we can use software already on CF-CARDS for the Z80 SBC board
+USB_STATUS_PORT	EQU	BASE_PORT+4H	;Status port for USB console input port
+USB_DATA_PORT	EQU	BASE_PORT+5H	;Data port for USB console port
+IOBYTE		EQU	BASE_PORT+6H	;See above
+
+PS2_STATUS_PORT	EQU	02H		;PS2 Keyboard input port
+PS2_DATA_PORT	EQU	03H
+
+DIAG_LEDS	EQU	06H		;LED BAR of FPGA Board (and LED Bar on V3 SMB if present)
+SW_TMAX		EQU	0EEH		;OUTPUT BIT 0 HIGH FROM THIS PORT LOWERS DMA0* on V3 SMB (if present)
+					;OUTPUT BIT 1 HIGH FROM THIS PORT LOWERS DMA1* on V3 SMB (if present)
+					;OUTPUT BIT 2 HIGH FROM THIS PORT LOWERS DMA2* on V3 SMB (if present)
+					;OUTPUT BIT 3 HIGH FROM THIS PORT LOWERS DMA3* on V3 SMB (if present) 
+SW_TMA0	EQU	0EDH			;INPUT FROM THIS PORT LOWERS DMA0* (SWITCHES IN THE 8088,8086,80286 or 80386 boards)
+
+
+					;Note these DMA lines are only used in master/slave changes. Not normally used here.
+
+RAM_BANK	EQU	36H		;Port to switch Low/High 32K RAM Page
+ROM_PAGE	EQU	07H		;Port to inactivate the the onboard FPGA ROM or switch in/out one of the four 4k pages.
+
+MPGSEL_0	EQU	78H		; Z2 MEM MGR BANK 0 PAGE SELECT REG (0K-16K)
+MPGSEL_1	EQU	79H		; Z2 MEM MGR BANK 1 PAGE SELECT REG (16K-32K)
+MPGSEL_2	EQU	7AH		; Z2 MEM MGR BANK 2 PAGE SELECT REG (32K-48K)
+MPGSEL_3	EQU	7BH		; Z2 MEM MGR BANK 3 PAGE SELECT REG (48K-64K)
+MPGENA		EQU	7CH		; Z2 MEM MGR PAGING ENABLE REGISTER (BIT 0, WRITE ONLY)
+
+PRINTER_STROBE	EQU	0C6H		;PRINTER DATA STROBE PORT OUT
+PRINTER_STATUS	EQU	0C7H		;PRINTER STATUS PORT IN
+PRINTER_OUT	EQU	0C7H		;PRINTER DATA PORT OUT
+
+SPEED_PORT	EQU	07H		;Bit 7 HIGH forces CPU to SLOW State
+	
+VGA_CURSOR_X	EQU	0C0H		;Port to set VGA video cursor
+VGA_CURSOR_Y	EQU	0C1H
+VGA_COLOR	EQU	0C2H		;Port to set text color
+VGA_BASE	EQU	0E000H		;The VGA text will reside from E000H to EC7FH
+VGA_BASE_END	EQU	0EC7FH		;Last character at bottom RHS
+TOTAL_VGA_LINES	EQU	38		;26H
+RAM_POINTER	EQU	VGA_BASE+0FFEH	;Will store VGA RAM Pointer at very top or its RAM.
+LOCAL_X		EQU	VGA_BASE+0FFDH
+LOCAL_Y		EQU	VGA_BASE+0FFCH
+
+MODEM_SEND_MASK	EQU	4
+SEND_READY	EQU	4		;VALUE WHEN READY
+MODEM_RECV_MASK	EQU	1
+RECV_READY	EQU	1		;BIT ON WHEN READY
+MODEM_ERR_LIMIT	EQU	8		;Max number of Modem serial port re-reads aborting
+MODEM_RTS_DELAY	EQU	1		;Time to check Modem RTS line (See XMODEM_LOAD & P_XMODEM_LOAD). Not critical.
+
+RECVD_SECT_NO	EQU	0H		;IX Offset for XModem Recieved Sector Number
+SECTNO		EQU	1H		;IX Offset for XModem CURRENT SECTOR NUMBER 
+ERRCT		EQU	2H		;IX Offset for XModem ERROR COUNT
+					
+;****************************************************************************************************************
+;
+;		 EQUATES FOR OTHER POSSIBLE BOARDS IN THE S100 BUS SYSTEM
+;               (Note. If the board is not present the code will ignore the hardware)
+;
+;****************************************************************************************************************
+    					;FOR S100 BUS 8259A (If Present)
+MASTER_PIC_PORT	EQU	20h		;Hardware port the 8259A (two ports 20H & 21H)
+MasterICW1	equ	00010111B	;EDGE triggered, 4 bytes, single Master,ICW4 needed
+MasterICW2	equ	8H		;Base address for 8259A Int Table (IBM-PC uses 8X4 = 20H)
+MasterICW3	equ	0H		;No slave
+MasterICW4	equ	00000011B	;No special mode, non buffer, Auto EOI, 8086.  ;<<<<,
+
+;-------------- S100Computers PROPELLER CONSOLE_IO (OR SD SYSTEMS VIDIO BOARD) FOR CONSOLE INPUT & OUTPUT
+
+S100_CONSOL_STATUS	EQU	0H	;Note will utilize this board if IOBYTE bits 0 & 1 are ZERO (or bit 5 is 1).	
+S100_CONSOL_IN		EQU	1H
+S100_CONSOL_OUT		EQU	1H
+
+;-------------- S100Computers I/O BOARD PORT ASSIGNMENTS  (A0-AC)
+
+BCTL		EQU	0A0H		;CHANNEL B CONTROL  (SPEECH PORT) ;<--- Adjust as necessary, 
+BDTA		EQU	0A2H		;CHANNEL B DATA
+ACTL		EQU	0A1H		;CHANNEL A CONTROL (MODEM_CTL_PORT)		
+ADTA		EQU	0A3H		;CHANNEL A DATA (MODEM_DATA_PORT)
+
+MODEM_CTL_PORT	EQU	0A1H	 	;A1H (Note modem I/O will be on CHANNEL A. Speaker on CHANNEL B
+MODEM_DATA_PORT	EQU	0A3H		;A3H 
+
+;-------------- S100Computers IDE HARD DISK CONTROLLER COMMANDS ETC. (for Z80_MONB.Z80) -------------------------------------
+
+IDEPORTA	EQU	030H		;Lower 8 bits of IDE interface (8255)
+IDEPORTB	EQU	031H		;Upper 8 bits of IDE interface
+IDEPORTC	EQU	032H		;Control lines for IDE interface
+IDEPORTCTRL	EQU	033H		;8255 configuration port
+
+READCFG8255	EQU	10010010b	;Set 8255 IDEportC to output, IDEportA/B input
+WRITECFG8255	EQU	10000000b	;Set all three 8255 ports to output mode
+
+;IDE control lines for use with IDEportC.  
+
+IDEA0LINE	EQU	01H		;direct from 8255 to IDE interface
+IDEA1LINE	EQU	02H		;direct from 8255 to IDE interface
+IDEA2LINE	EQU	04H		;direct from 8255 to IDE interface
+IDECS0LINE	EQU	08H		;inverter between 8255 and IDE interface
+IDECS1LINE	EQU	10H		;inverter between 8255 and IDE interface
+IDEWRLINE	EQU	20H		;inverter between 8255 and IDE interface
+IDERDLINE	EQU	40H		;inverter between 8255 and IDE interface
+IDERSTLINE	EQU	80H		;inverter between 8255 and IDE interface
+
+;Symbolic constants for the IDE Drive registers, which makes the
+;code more readable than always specifying the address bits
+
+REGDATA		EQU	IDEcs0line					;(08H)
+REGERR		EQU	IDEcs0line + IDEa0line				;(09H)
+REGSECCNT	EQU	IDEcs0line + IDEa1line				;(0AH)
+REGSECTOR	EQU	IDEcs0line + IDEa1line + IDEa0line		;(0BH)
+REGCYLINDERLSB	EQU	IDEcs0line + IDEa2line				;(0CH)
+REGCYLINDERMSB	EQU	IDEcs0line + IDEa2line + IDEa0line		;(0DH)
+REGSHD	EQU	IDEcs0line + IDEa2line + IDEa1line			;(0EH)
+REGCOMMAND	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line	;(0FH)
+REGSTATUS	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line
+REGCONTROL	EQU	IDEcs1line + IDEa2line + IDEa1line
+REGASTATUS	EQU	IDEcs1line + IDEa2line + IDEa1line + IDEa0line
+
+;IDE Command Constants.  These should never change.
+
+COMMANDrecal	EQU	10H
+COMMANDread	EQU	20H
+COMMANDwrite	EQU	30H
+COMMANDinit	EQU	91H
+COMMANDid	EQU	0ECH
+COMMANDspindown	EQU	0E0H
+COMMANDspinup	EQU	0E1H
+
+
+; IDE Status Register:
+;  bit 7: Busy	1=busy, 0=not busy
+;  bit 6: Ready 1=ready for command, 0=not ready yet
+;  bit 5: DF	1=fault occured insIDE drive
+;  bit 4: DSC	1=seek complete
+;  bit 3: DRQ	1=data request ready, 0=not ready to xfer yet
+;  bit 2: CORR	1=correctable error occured
+;  bit 1: IDX	vendor specific
+;  bit 0: ERR	1=error occured
+
+SEC$SIZE	EQU	512		;Assume sector size as 512. (Not tested for other sizes)
+MAXSEC		EQU	3DH		;Sectors per track for CF my Memory drive, Kingston CF 8G. (For CPM format, 0-3CH)
+					;This translates to LBA format of 1 to 3D sectors, for a total of 61 sectors/track.
+					;This CF card actully has 3F sectors/track. Will use 3D for my CPM3 system because
+					;my Seagate drive has 3D sectors/track. Don't want different CPM3.SYS files around
+					;so this program as is will also work with a Seagate 6531 IDE drive
+
+MAXTRK		EQU	0FFH		;CPM3 allows up to 8MG so 0-256 "tracks"
+BUFFER$ORG	EQU	3000H		;<----- Will place all sector data here
+
+CPM$BOOT$COUNT	EQU	12		;Allow up to 12 CPM sectors for CPMLDR
+CPMLDR$ADDRESS	EQU	100H		;Load the CPMLDR at 100H in RAM 
+
+RAM_BANK	EQU	36H		;Port to switch Low/High 32K RAM Page
+ROM_PAGE	EQU	07H		;Set ROM page of FPGA ROM
+
+SD_CARD_BASE	EQU	06CH
+
+SD_DATA_OUT	EQU	SD_CARD_BASE		; (6CH) Data TO port to SD CONTRROLLER
+SD_DATA_IN	EQU	SD_CARD_BASE		; (6CH) Data TO port to SD CONTRROLLER
+SD_SPEED_PORT	EQU	SD_CARD_BASE+1		; (6DH) HIGH TO READ/WRITE SECTORS WITH HIGH SPEED SPI CLOCK
+SD_CS_PORT	EQU	SD_CARD_BASE+2		; (6EH) SD Select Port
+SD_STATUS	EQU	SD_CARD_BASE+2		; (6EH) SD Status Port
+SD_RW		EQU	SD_CARD_BASE+3		; (6FH) Port to pulse SPI Read/Write
+
+HIGH_SPEED	EQU	01H;		; Select SPI 10MHz CLK
+LOW_SPEED	EQU	00H		; Select SPI 4KHz CLK (Default on startup)
+SD_CS_A		EQU	0FEH		; CS* select bit for SD Card drive A
+SD_CS_B		EQU	0FDH		; CS* select bit for SD Card drive B 
+SD_BUSY		EQU	01H;
+SD_CS_READ_A	EQU	80H;		; Bit to test if Drive A CS* pin is low (not currently used)
+SD_CS_READ_B	EQU	40H;		; Bit to test if Drive B CS* pin is low (not currently used)
+					
+
+MONITOR		EQU	0F000H		; Location of Z80 ROM monitor when done.
+
+DEBUG		EQU	TRUE		; If TRUE all sector reads will display the actual 512 bytes of data read
+SPI_SPEED	EQU	TRUE		; If TRUE all sector Reads/Writes will switch the SPI interface from 40Khz to 10MHz
+
+CONSTAT		EQU	0H		; Console Status Port
+CONIN		EQU	1H		; Console IN Port
+CONOUT		EQU	1H		; Console OUT Port
+
+;-----------------  RTC PORT ASSIGNMENTS ---------------------------------------------------------------
+;
+SPI_BASE_PORT	EQU	068H			; Base I/O port fot SPI module
+;SPI_ADDRESS_OUT	EQU	SPI_BASE_PORT		; 68H, Data OUT port from SPI module to RTC
+SPI_DATA_OUT	EQU	SPI_BASE_PORT+0		; 68H, Data OUT port from SPI module to RTC
+SPI_DATA_IN	EQU	SPI_BASE_PORT+0		; 68H, Data IN from EEPROM
+SPI_CS		EQU	SPI_BASE_PORT+2		; 6AH, CS Data OUT port to SPI/EEPROM module
+SPI_STATUS	EQU	SPI_BASE_PORT+2		; 6AH, Busy Flag IN port from SPI/EEPROM
+
+SPI_READ	EQU	SPI_BASE_PORT+3		; 6B, Read pulse to SPI module
+SPI_WRITE	EQU	SPI_BASE_PORT+3		; 6B, Write pulse to SPI module
+
+RTC_CS_LOW		EQU	00H		; Bit 0 has CS  (Note, HIGH to select chip)
+RTC_CS_HIGH		EQU	01H			
+
+RTC_SECONDS	EQU	0H			;All registers OR 80H for WRITE Address
+RTC_MINUTES	EQU	1H
+RTC_HOURS	EQU	2H
+RTC_DAY		EQU	3H
+RTC_DATE	EQU	4H
+RTC_MONTH	EQU	5H
+RTC_YEAR	EQU	6H
+
+RTC_CTL_REG	EQU	0FH
+RTC_STATUS_REG	EQU	10H
+RTC_RAM		EQU	20H			;20H -- 7FH
+
+ENABLE_OSC	EQU	80H			;Bit to enable/start the RTC chip (0=start, 1=stop)
+WP		EQU	40H			;Write Protect. Bit must be 0 to alter any other register. 
+						;Note alarms etc are not implemented in this simple example.
+
+; -------------------------- RAM usage for IDE & RTC Routines (in Z80_MONB.Z80,Z80_MONC.Z80 & Z80_MOND.Z80)  ---------------
+
+IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters 
+buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
+
+@DMA		EQU	RAM_BASE + 1F00H	;Remember Stack is at ~DFF0H
+@DRIVE$SEC	EQU	RAM_BASE + 1F02H
+@DRIVE$TRK	EQU	RAM_BASE + 1F04H
+@SEC		EQU	RAM_BASE + 1F06H
+@TRK		EQU	RAM_BASE + 1F08H
+@STARTLINEHEX	EQU	RAM_BASE + 1F10H
+@STARTLINEASCII	EQU	RAM_BASE + 1F12H
+@BYTE$COUNT	EQU	RAM_BASE + 1F14H
+@SECTOR$COUNT	EQU	RAM_BASE + 1F16H
+@DELAYSTORE	EQU	RAM_BASE + 1F18H
+
+@YEAR:		EQU	RAM_BASE + 1F1AH
+@MONTH:		EQU	RAM_BASE + 1F1CH
+@DATE:		EQU	RAM_BASE + 1F1EH
+@HOURS:		EQU	RAM_BASE + 1F20H
+@MINUTES:	EQU	RAM_BASE + 1F22H
+@SECONDS:	EQU	RAM_BASE + 1F24H
+
+@CARD_TYPE	EQU	RAM_BASE + 1F26H	;For SD cards
+@CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
+@SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
+
+
+;///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+;-------------------------------- START OF ACTUAL MONITOR @ FOOOH --------------------------------------------------
+;//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+ORG		MONITOR_BASE		;<--------<<<<<< LOCATION OF START OF MONITOR, F000H >>>>>>>>>>>>>>>>>>>>>>
+
+	JP	RTC_MENU		; In theory we should never get here.
+
+;----------------->>> THIS CODE MUST BE AT THE SAME LOCATION AS FOR THE LOW PAGE ROM CODE <<<---------
+;
+;THIS CODE MUST BE AT THE SAME LOCATION FOR ALL ROM PAGES (SBC-MONA.Z80,SBC-MONB.Z80,SBC-MONC.Z80,SBC-MOND.Z80)
+;
+ACTIVATE_1_HIGH_PAGE:			; [B], SWITCH TO HIGH PAGE #1 of ROM  (IDE, CPM)
+	NOP
+	NOP
+	NOP
+	NOP
+	JP	INVALID_MENU_ERROR
+	
+	
+ACTIVATE_2_HIGH_PAGE:			; [C], SWITCH TO HIGH PAGE #2 of ROM (SD Card)
+	NOP
+	NOP
+	NOP
+	NOP
+	JP	INVALID_MENU_ERROR	
+	
+
+ACTIVATE_3_HIGH_PAGE:			; [D], SWITCH TO HIGH PAGE #3 of ROM (RTC)
+	NOP
+	NOP
+	NOP
+	NOP
+	JP	HIGH_MENU_3_OPTION	
+
+	
+ACTIVATE_LOW_PAGE:			; RETURN BACK TO LOW PAGE (00) OF ROM
+	LD	A,00H			
+	OUT	(ROM_PAGE),A	
+	HALT				; Will arrive here only IF no address line switch 
+
+
+;----------------------->>> END OF COMMON CODE LOACTIONS <<<----------------------------------
+;
+
+HIGH_MENU_3_OPTION:
+	LD	A,D			; HIGH PAGE code with 5 in [D] for RTC Menu
+	CP	A,5
+	JP	Z,RTC_ANALYSIS
+	JP	INVALID_MENU_ERROR	; The only menu options so far
+
+INVALID_MENU_ERROR:
+	LD      HL,DATA_ERROR_MSG	; Point Error Message
+	CALL	PMSG			; Print string
+	JP	ACTIVATE_LOW_PAGE
+
+RTC_ANALYSIS:
+	LD	HL,SIGNON
+	CALL	PMSG
+
+START2:	LD	A,RTC_CS_LOW			;Deselect RTC chip SPI interface (Note HIGH for CS)
+	OUT	(SPI_CS),A
+	
+	LD	HL,RTC_MENU
+	CALL	PMSG
+	CALL	CRLF				;Normal start within menu
+	LD	C,'>'	   
+	CALL	CO
+	CALL	CI
+	CP	A,ESC
+	JP	NZ,START3
+	JP	ACTIVATE_LOW_PAGE
+	
+START3:	CP	A,'0'
+	JP	Z,ACTIVATE_RTC
+	CP	A,'1'
+	JP	Z,READ_SECONDS
+	CP	A,'2'
+	JP	Z,WRITE_RAM
+	CP	A,'3'
+	JP	Z,READ_RAM
+	CP	A,'4'
+	JP	Z,SET_TIME
+	CP	A,'5'
+	JP	Z,READ_TIME
+	CP	A,'6'
+	JP	Z,DISPLAY_RGS
+	JP	MENU_ERROR
+	JP	START2
+
+MENU_ERROR:
+	LD	HL,MENU_MSG		; "Menu error"
+	CALL	PMSG
+	JP	ACTIVATE_LOW_PAGE
+ 
+ DATA_ERROR:
+	LD	HL,FORMAT_ERR_MSG	; "DATA  error"
+	CALL	PMSG
+	JP	START2
+	
+;-------------------------------------------------------------------------------------------------
+ACTIVATE_RTC:
+	LD	HL,MSG0			; "Activate RTC Chip"
+	CALL	PMSG
+	
+	LD	B,RTC_CTL_REG OR 80H	; RTC Register address + Write
+	LD	C,00000000B		; ENABLE_OSC, Bit 7 to enable/start the RTC chip (0=start, 1=stop)
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+	JP	START2
+	
+READ_SECONDS:
+	LD	HL,MSG1			; "1 = Read Seconds Register from RTC Chip"
+	CALL	PMSG
+	
+	LD	B,RTC_SECONDS		; Seconds Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+
+	PUSH	AF			; Save it
+	LD	HL,MSG2			; "RTC Seconds Register = "
+	CALL	PMSG
+	POP	AF
+	CALL	PRINT_A			; Display Returned SPI PROM Byte
+	CALL	CRLF
+	JP	START2
+
+WRITE_RAM:
+	LD	HL,MSG3			; "2",CR,LF,Enter RAM location (20H-7FH) "
+	CALL	PMSG
+	
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	OR	A,80H			; Add write bit
+	LD	D,A			; RAM Location to D (with Write bit)
+	LD	HL,MSG4			; 'Enter Byte value " 
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	E,A			; Save above values in DE
+
+	LD	C,A			; Value to write to RAM
+	LD	B,D			; Get the above saved address			
+	CALL	WRITE_SPI		; <<<  Send Write pulse (Address in B, data in C)
+
+	LD	HL,MSG5			; "Wrote" 
+	CALL	PMSG
+	LD	A,E
+	CALL	PRINT_A
+	LD	HL,MSG6			; " to RAM location 	
+	CALL	PMSG
+	LD	A,D
+	AND	A,7FH			; Strip Write bit
+	CALL	PRINT_A
+	LD	HL,MSG7			; "  in RTC"	
+	CALL	PMSG
+	CALL	CRLF
+	JP	START2
+	
+READ_RAM:
+	LD	HL,MSG8			; "3 CR,LF,Enter RAM location (20H-7FH) "
+	CALL	PMSG
+
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	D,A			; Save RAM Location to D
+
+	LD	B,A			; RAM Location to B
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+
+	PUSH	AF			; Save data
+	LD	HL,MSG9			; "RAM location "
+	CALL	PMSG
+	LD	A,D
+	CALL	PRINT_A
+	LD	HL,MSG10		; " H = "	
+	CALL	PMSG
+	POP	AF
+	CALL	PRINT_A
+	LD	HL,MSG11		; "  in RTC"	
+	CALL	PMSG
+	CALL	CRLF
+	JP	START2
+	
+SET_TIME:
+	LD	HL,MSG12		; "4",CR,LF,'Enter Year (00-99) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@YEAR),A	
+	LD	B,RTC_YEAR OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+
+	LD	HL,MSG13		; CR,LF,'Enter Month (01-12) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@MONTH),A
+	LD	B,RTC_MONTH OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+
+	LD	HL,MSG14		; CR,LF,'Enter Date (01-31) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@DATE),A
+	LD	B,RTC_DATE OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+	
+	LD	HL,MSG15		; CR,LF,'Enter Hours (00-23) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@HOURS),A
+	LD	B,RTC_HOURS OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+
+	LD	HL,MSG16		; CR,LF,'Enter Minutes (00-59) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@MINUTES),A
+	LD	B,RTC_MINUTES OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+	
+	LD	HL,MSG17		; CR,LF,'Enter Seconds (00-59) '
+	CALL	PMSG
+	CALL	GET_HEX
+	JP	C,DATA_ERROR
+	LD	(@SECONDS),A
+	LD	B,RTC_SECONDS OR 80H	; RTC Register address + Write
+	LD	C,A		
+	CALL	WRITE_SPI		; <<<< Send Write pulse (Address + DATA)
+	
+	LD	HL,MSG18		; CR,LF,'Entered:- 20'
+	CALL	PMSG
+	LD	A,(@YEAR)
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+	LD	A,(@MONTH)
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+	LD	A,(@DATE)
+	CALL	PRINT_A
+	LD	HL,MSG19		; '  Time= '
+	CALL	PMSG
+	LD	A,(@HOURS)
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+	LD	A,(@MINUTES)
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+	LD	A,(@SECONDS)
+	CALL	PRINT_A
+	CALL	CRLF
+	JP	START2
+	
+	
+READ_TIME:
+	LD	HL,MSG20		; "5",CR,LF,'Date = '
+	CALL	PMSG
+
+	LD	B,RTC_YEAR		; Year Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+
+	LD	B,RTC_MONTH		; Month Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,'/'
+	CALL	CO
+
+	LD	B,RTC_DATE		; Date Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+
+	LD	HL,MSG19		; '  Time= '
+	CALL	PMSG
+
+	LD	B,RTC_HOURS		; Hours Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,':'
+	CALL	CO
+
+	LD	B,RTC_MINUTES		; Minutes Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,':'
+	CALL	CO
+
+	LD	B,RTC_SECONDS		; Seconds Register address + READ
+	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+
+	CALL	CRLF
+	JP	START2
+
+
+DISPLAY_RGS:
+	LD	HL,MSG21		; "6",CR,LF,'Register Dump:-'
+	CALL	PMSG
+	LD	HL,MSG22		; 'Register (00H - 06H)  '
+	CALL	PMSG
+
+	LD	D,07H			;Count
+	LD	B,00H			;Register pointer
+REGS_1:	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,' '
+	CALL	CO
+	INC	B																				
+	DEC	D
+	LD	A,D
+	OR	A,A
+	JP	NZ,REGS_1
+
+	LD	HL,MSG23		; 'Register (07H - 0EH)  '
+	CALL	PMSG
+
+	LD	D,08H			;Count
+	LD	B,09H			;Register pointer
+REGS_2:	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,' '
+	CALL	CO
+	INC	B																				
+	DEC	D
+	LD	A,D
+	OR	A,A
+	JP	NZ,REGS_2
+
+	LD	HL,MSG24		; 'Register (0FH - 11H)  '
+	CALL	PMSG
+
+	LD	D,03H			;Count
+	LD	B,0FH			;Register pointer
+REGS_3:	CALL	READ_SPI		; <<< Send Read pulse (Address, get DATA), return result in [A]
+	CALL	PRINT_A
+	LD	C,' '
+	CALL	CO
+	INC	B																				
+	DEC	D
+	LD	A,D
+	OR	A,A
+	JP	NZ,REGS_3
+	CALL	CRLF
+	JP	START2
+
+
+
+
+
+;------------------------ SPI CORE ROUTINES ---------------------------------------------------------
+
+WRITE_SPI:				; [C] contains DATA, [B] contains Register address
+	LD	A,RTC_CS_HIGH		; Select RTC
+	OUT	(SPI_CS),A
+		
+	LD	A,B			; Address
+	OUT	(SPI_DATA_OUT),A
+	OUT	(SPI_WRITE),A		; (Port 6B) Send Write pulse
+	CALL	DELAY
+	LD	A,C			; Data
+	OUT	(SPI_DATA_OUT),A
+	OUT	(SPI_WRITE),A		; (Port 6B) Send Write pulse 
+	CALL	DELAY
+	
+	LD	A,RTC_CS_LOW		; De-select RTC
+	OUT	(SPI_CS),A
+	RET
+
+READ_SPI:
+	LD	A,RTC_CS_HIGH		; Select RTC
+	OUT	(SPI_CS),A
+READ_SPI1:
+	LD	A,B			; Address
+	OUT	(SPI_DATA_OUT),A
+	OUT	(SPI_WRITE),A		; (Port 6B) Send Write pulse 
+	CALL	DELAY
+	IN	A,(SPI_READ)		; Send Read pulse (Port 6B)
+	CALL	DELAY
+	IN	A,(SPI_DATA_IN)		; <<< Get SPI data returned in [A]
+	PUSH	AF
+
+	LD	A,RTC_CS_LOW		; De-select RTC
+	OUT	(SPI_CS),A
+	POP	AF
+	RET				;Return with value in [A]
+
+
+DELAY:	PUSH	HL
+	LD	HL,40H			;Extra time required for RTC to write multiple data bytes
+DELAY1:	DEC	HL			;before Status is valid	
+	LD	A,H
+	OR	A,L
+	JR	NZ,DELAY1
+	POP	HL
+DELAY2:	IN	A,(SPI_STATUS)		; Wait until busy is low
+	OR	A,A
+	JR	NZ,DELAY2
+	RET
+
+;<<<<<<<<<<<<<<<<<<<<<<<<< SUPPORT ROUTINES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+PMSG:	PUSH	BC		; Only [A] and [HL] is changed
+PMSG1:	LD	A,(HL)		; A ROUTINE TO PRINT OUT A STRING @ [HL]
+	INC	HL		; UP TO THE FIRST 0.
+	OR	A,A
+	JP	Z,PMSG_DONE
+	LD	C,A
+	CALL	CO
+	JP	PMSG1
+PMSG_DONE:
+	POP	BC
+	RET
+
+CRLF:	PUSH	BC
+	LD	C,CR
+	CALL	CO
+	LD	C,LF
+	CALL	CO
+	POP	BC
+	RET
+
+PSPACE:  PUSH	BC
+	LD	C,20H
+	CALL	CO
+	POP	BC
+	RET
+
+
+; GET A CHARACTER, convert to UC, ECHO it
+GETCMD:	CALL	CI		
+	CALL	UCASE
+	CP	A,ESC
+	RET	Z		;Don't echo an ESC
+	PUSH	AF		;Save it
+	PUSH	BC
+	LD	C,A
+	CALL	CO		;Echo it
+	POP	BC
+	POP	AF		;get it back
+	RET
+;				;Convert LC to UC
+UCASE:	CP	A,'a'		;must be >= lowercase a
+	RET	C		; else go back...
+	CP	A,'z'+1		;must be <= lowercase z
+	RET	NC		; else go back...
+	SUB	A,'a'-'A'	;subtract lowercase bias
+	RET
+
+; Check if next character is a ESC
+CHECK_ESC:
+	CALL	CI
+	CP	A,ESC
+	RET			; Return Z if ESC character.
+	
+; Check if next character is a CR
+CHECK_CR:
+	CALL	CI
+	CP	A,CR
+	RET			; Return Z if ESC character.
+	
+; Return with 2 HEX digits in [A]. If abort, Carry flag set + ESC in [A]
+GET_HEX:
+	PUSH	BC			
+	CALL	GETCMD		;Get a character from keyboard & ECHO
+	CP	A,ESC
+	JR	Z,HEX_ABORT
+	CP	'/'		;check 0-9, A-F
+	JR	C,HEX_ABORT
+	CP	'F'+1
+	JR	NC,HEX_ABORT
+	CALL	ASBIN		;Convert to binary
+	SLA	A
+	SLA	A
+	SLA	A
+	SLA	A		;Shift to high nibble	
+	LD	B,A		;Store it
+	CALL	GETCMD		;Get 2nd character from keyboard & ECHO
+	CP	A,ESC
+	JR	Z,HEX_ABORT
+	CP	'/'		;check 0-9, A-F
+	JR	C,HEX_ABORT
+	CP	'F'+1
+	JR	NC,HEX_ABORT
+	CALL	ASBIN		;Convert to binary
+	OR	A,B		;add in the first digit
+	OR	A,A		;To return NC
+	POP	BC
+	RET
+	
+HEX_ABORT:
+	SCF			;Set Carry flag 
+	LD	A,ESC
+	POP	BC
+	RET
+;
+;
+; Put 4 HEX characters in [HL] 
+GET_HEX4:	
+	LD      H,0000H
+	CALL	GET_HEX		;get 2 HEX digits
+	JR	C,SCAN_ABORT
+	LD	H,A
+	CALL	GET_HEX		;get 2 more HEX digits
+	JR	C,SCAN_ABORT
+	LD	L,A
+	OR	A,A		;To return NC
+	RET
+	
+SCAN_ABORT:
+	SCF			;Set Carry flag 
+	RET
+
+; ASCII TO BINARY CONVERSION ROUTINE
+ASBIN:	SUB	30H 
+	CP	0AH 
+	RET	M
+	SUB	07H 
+	RET
+;	
+;
+; PRINT [HL] ON CONSOL
+PRINT_HL:
+	LD	A,H
+	CALL	PRINT_A
+	LD	A,L
+PRINT_A:
+	PUSH	AF
+	RRCA
+	RRCA
+	RRCA
+	RRCA
+	CALL	SF598
+	POP	AF
+SF598:	CALL	CONV
+	JP	CO
+
+; CONVERT HEX TO ASCII
+CONV:	AND	0FH
+	ADD	A,90H
+	DAA 
+	ADC	A,40H
+	DAA 
+	LD	C,A
+	RET
+	
+; DISPLAY 8 BITS OF [A] (No registers changed)
+; DISPLAY BIT PATTERN IN [A]
+ZBITS:	PUSH	AF
+	PUSH	BC
+	PUSH	DE
+	LD	E,A		
+	LD	B,8
+BQ2:	SLA	E	
+	LD	A,18H
+	ADC	A,A
+	LD	C,A
+	CALL	CO
+	DJNZ	BQ2
+	POP	DE
+	POP	BC
+	POP	AF
+	RET
+
+;<<<<<<<<<<<<<<<<<<<<<< MAIN CONSOL ROUTINES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;
+
+CO:	IN	A,IOBYTE		;Find out where we send data
+;	BIT	2,A	
+;	JR	Z,VGA_CO		;To save space no VGA for now
+	BIT	0,A	
+	JR	Z,USB_CO		;USB port for output
+	JR	PROP_CO			;For now everything else Propeller 	
+
+PROP_CO:
+	IN	A,(S100_CONSOL_STATUS)	;PROPELLER VIDIO BOARD PORT
+	AND	4H
+	JR	Z,PROP_CO		;Not yet ready, try both outputs
+	LD	A,C
+	CP	07H			;IS IT A BELL
+	JP	Z,BELL1			;Special case
+	CP	0H			;SD BOARD CANNOT TAKE A NULL!
+	RET	Z
+	OUT	(S100_CONSOL_OUT),A
+	RET
+
+BELL1:	LD	A,06H			;SEND A BELL
+	OUT	(S100_CONSOL_OUT),A
+	LD	A,0FH
+	CALL	CDELAY
+	LD	A,07H
+	OUT	(S100_CONSOL_OUT),A
+	RET
+
+
+CDELAY:	DEC	A			;GENERAL COUNT DOWN TIME DELAY
+	RET	Z			;LENGTH SET IN [A]
+	PUSH	AF
+	LD	A,05H
+MORE:	DEC	A
+	PUSH	AF
+	XOR	A
+MORE2:	DEC	A
+	JR	NZ,MORE2
+	POP	AF
+	JR	NZ,MORE
+	POP	AF
+	JR	CDELAY
+
+
+USB_CO:	IN	A,(USB_STATUS_PORT)	;USB Port for Console OUT
+	AND	00000010B
+	JR	NZ,USB_CO		;Not yet ready - busy transmitting, try again
+	LD	A,C
+	AND	7FH			;Always 7 bits only.
+	OUT	(USB_DATA_PORT),A
+	RET
+
+
+;<<<<<<<<<<<<<<<<<<< MAIN CONSOL STATUS ROUTINE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+CSTS:	IN	A,IOBYTE		;Find out where we get data
+	BIT	1,A	
+	JR	Z,PS2_CSTS
+;	BIT	2,A			; To save space no VGA console for now
+;	JR	Z,VGA_CSTS
+	BIT	0,A	
+	JR	Z,USB_CSTS		;USB port
+	JR	PROP_CSTS		;For now everything else Propeller Console Board
+
+PROP_CSTS:
+	IN	A,(S100_CONSOL_STATUS)
+	AND	02H
+	JP	Z,NO_CSTS		;Zero if nothing
+GOT_CSTS:
+	XOR	A
+	DEC	A			;RETURN WITH 0FFH IN [A] IF SOMETHING
+	RET
+NO_CSTS:
+	XOR	A			
+	RET				;RETURN WITH 0 IN A IF NOTHING THERE
+
+USB_CSTS:
+	IN	A,(USB_STATUS_PORT)
+	AND	01H
+	JR	Z,NO_CSTS		;Zero if nothing
+	JR	GOT_CSTS
+
+PS2_CSTS:
+	IN	A,(PS2_STATUS_PORT)
+	AND	01H
+	JR	Z,NO_CSTS		;Zero/Low if nothing
+	JR	GOT_CSTS
+
+;<<<<<<<<<<<<<<<<<<<< MAIN CONSOL INPUT ROUTINE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+CI:	IN	A,IOBYTE		;Find out where we send data
+	BIT	1,A	
+	JR	Z,PS2_CI
+;	BIT	2,A			; To save space no VGA Console for now
+;	JR	Z,VGA_CI
+	BIT	0,A	
+	JR	Z,USB_CI		;USB port
+	JR	PROP_CI			;For now everything else Propeller Console Board
+	
+PROP_CI:
+	IN 	A,(S100_CONSOL_STATUS)	;NEED CONSTAT TO CLEAN UP SHIFT KEYS ETC
+	AND	02H
+	JR	Z,PROP_CI		;Wait until something there
+	IN	A,(S100_CONSOL_IN)
+	AND	7FH
+	RET
+
+USB_CI:
+	IN 	A,(USB_STATUS_PORT)	;NEED CONSTAT TO CLEAN UP SHIFT KEYS ETC
+	AND	01H
+	JR	Z,USB_CI		;Wait until something there
+	IN	A,(USB_DATA_PORT)
+	AND	7FH			;Always 7 bits only.
+	RET
+	
+PS2_CI:
+	IN 	A,(PS2_STATUS_PORT)	;NEED CONSTAT TO CLEAN UP SHIFT KEYS ETC
+	AND	01H
+	JR	Z,PS2_CI		;Wait until something there
+	IN	A,(PS2_DATA_PORT)
+	AND	7FH			;Always 7 bits only.
+	RET
+
+
+
+;---------------------------------------------------------------------------------------
+SIGNON:		DB	CR,LF
+		DB	CR,LF,'SPI interface to the RTC (U2) on Z80_FPGA Board.'
+		DB	CR,LF,'By John Monahan S100Computers.COM  (V1.0)  8/3/2019'
+		DB	CR,LF,'Note: This test is with a Maxim DS1305 RTC chip only.',0
+		
+RTC_MENU:	DB	CR,LF,LF,'---------- Main Menu ---------------'
+		DB	CR,LF,'0.   Activate Maxim DS1305 RTC chip.'
+		DB	CR,LF,'1.   Read Seconds Register from RTC Chip.'
+		DB	CR,LF,'2.   Write byte to RAM at a specified location in RTC.'
+		DB	CR,LF,'3.   Read byte from RAM at a specified location in RTC.'
+		DB	CR,LF,'4.   Set Time & Date.'
+		DB	CR,LF,'5.   Read Time & Date.'
+		DB	CR,LF,'6.   Display all RTC Registers.'
+		DB	CR,LF,'ESC  To abort program.',CR,LF,0H
+
+MENU_MSG:	DB	BELL,BELL,CR,LF,'Menu error.',0
+FORMAT_ERR_MSG: DB	BELL,BELL,CR,LF,'Data Format error.',0
+CMD_DONE:	DB	CR,LF,'Command Done.',CR,LF,LF,0
+DATA_ERROR_MSG	DB	CR,LF,BELL,'Error switching ROM page',CR,LF,0
+
+MSG0:		DB	'0 = Activate RTC Chip.',0	
+MSG1:		DB	'1 = Read Seconds Register from RTC Chip.'0
+MSG2:		DB	CR,LF,'RTC Seconds Register = ',0	
+MSG3:		DB	'2',CR,LF,'Enter RAM location (20H-7FH) ',0
+MSG4:		DB	CR,LF,'Enter Byte value ',0
+MSG5:		DB	CR,LF,'Wrote ',0 
+MSG6:		DB	'H to RAM location ',0
+MSG7:		DB	'H in RTC',0
+MSG8:		DB	'3',CR,LF,'Enter RAM location (20H-7FH) ',0
+MSG9:		DB	CR,LF,'RAM location ',0
+MSG10:		DB	'H = ',0
+MSG11:		DB	'H in RTC',0
+MSG12:		DB	'4',CR,LF,'Enter Year (00-99) ',0
+MSG13:		DB	CR,LF,'Enter Month (01-12) ',0
+MSG14:		DB	CR,LF,'Enter Date (01-31) ',0
+MSG15:		DB	CR,LF,'Enter Hours (00-23) ',0
+MSG16:		DB	CR,LF,'Enter Minutes (00-59) ',0
+MSG17:		DB	CR,LF,'Enter Seconds (00-59) ',0
+MSG18:		DB	CR,LF,LF,'Entered:- 20',0
+MSG19:		DB	'  Time = ',0
+MSG20:		DB	'5',CR,LF,'Date = 20',0
+MSG21		DB	'6',CR,LF,'Register Dump:-',0
+MSG22		DB	CR,LF,'Registers (00H - 06H)  ',0
+MSG23		DB	CR,LF,'Registers (07H - 0EH)  ',0
+MSG24		DB	CR,LF,'Registers (0FH - 11H)  ',0
+
+
+; END
+	
+
+
+
