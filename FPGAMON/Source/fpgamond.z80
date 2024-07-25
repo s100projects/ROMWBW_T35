@@ -41,6 +41,7 @@
 ;	V3.03	7/4/2024	[WBW] Switched RTC SPI to 8-bit interface
 ;	V3.04	7/5/2024	[WBW] Enhanced SD Card protocol handling
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
+;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE

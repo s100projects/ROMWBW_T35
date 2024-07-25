@@ -41,6 +41,7 @@
 ;	V3.03	7/4/2024	[WBW] Switched RTC SPI to 8-bit interface
 ;	V3.04	7/5/2024	[WBW] Enhanced SD Card protocol handling
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
+;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -422,7 +423,7 @@ DATA_ERROR:
 	
 	
 ;------------------------------------------------ RESET CARD INTERFACE -----------------------------
-INITILIZE_SD_CARD:     
+INITILIZE_SD_CARD:
 	LD	A,0
 	LD	(@CARD_TYPE),A			; Unknown Card Type so far
 	LD	HL,RESET_MSG
@@ -434,8 +435,18 @@ INITILIZE_SD_CARD:
 	JP	NZ,CMD_FAIL
 	LD	HL,RESET_OK_MSG			; "SD_CARD was reset OK"
 	CALL	PMSG
+	
+	CALL	SEND_IF_COND			; Send required IF_COND
+	LD	HL,IF_COND_ERR_MSG		;  'IF COND command failed. (Status =
+	JP	NZ,CMD_FAIL			; Abort on failure
 
-	CALL	SEND_GET_TYPE			; Initilize a Type 2 Card, Get Card Type CMD8. Required for SDHC cards
+	CALL	ACTIVATE			; Card activation sequence
+	LD	HL,ACT_ERR_MSG			; SD Card Type 2 Initilization failed (CMD55 or CMD41).
+	JP	NZ,CMD_FAIL
+	LD	HL,ACT_OK_MSG			; 'CMD41 & CMD55 accepted OK. SD Card is now initilized.'
+	CALL	PMSG
+
+	CALL	SEND_GET_TYPE			; Determine Card Type
 	LD	HL,SD_TYPE_ERR_MSG		; 'SD Card Type detection failed. (Status = '
 	JP	NZ,CMD_FAIL
 	
@@ -450,12 +461,6 @@ INITILIZE_SD_CARD:
 	LD	HL,SD_NOT_SUP_ERR		; 'SD Card Type not supported!'
 	JP	NZ,PMSG				; If not, print message and return to menu
 	
-	CALL	TYPE_2_ACTIVATE			; Type 2 needs special activation
-	LD	HL,CMD55_FAIL_MSG		; SD Card Type 2 Initilization failed (CMD55 or CMD41).
-	JP	NZ,CMD_FAIL
-	LD	HL,CMD41_55_OK_MSG		; 'CMD41 & CMD55 accepted OK. SD Card is now initilized.'
-	CALL	PMSG
-
 	CALL	STOP_CRC_CHECK			; Turn off CRC Checking
 	LD	HL,CRC_ERROR_MSG		; "Got error trying to turn off CRC checking."
 	JP	NZ,CMD_FAIL
@@ -520,61 +525,51 @@ SEND_IDLE2:
 	XOR	A
 	RET					; Error RET Z
 	
-;------------------------------------------------ GET CARD VOLTAGE/TYPE --------------------------------------
+;------------------------------------------------ GET CARD VOLTAGE --------------------------------------
 
-SEND_GET_TYPE:					; Get Card Voltage/Type
-	LD	B,40				; Try several times
-GET_TYPE1:
+SEND_IF_COND:
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
 	LD	HL,CMD_8			; SEND CMD8 to get Card Voltage
 	CALL	SEND_SD_CMD	
 	CALL	READ_RESULT
-	CP	A,01H				; Expected result for Type 2
-	JP	Z,SD_TYPE_2			; If so, handle Type 2 Card
-	CP	A,05H				; Expected result for Type 1
-	JR	Z,SD_TYPE_1			; Handle Type 1 Card
-	CALL	SD_CS_OFF			; Turn off CS on both SD Cards
-	DJNZ	GET_TYPE1			; And keep trying till counter exhausted
-	JR	SD_TYPE_0
-;
-SD_TYPE_0:
-	; Unknown Card Type
-	LD	A,0				; Unknown
-	LD	(@CARD_TYPE),A			; Record it
-	XOR	A,A
+	CALL	SD_CS_OFF			; -- Turn off CS on both SD Cards
+	CP	A,01H				; Correct response is 01H
+	RET	Z				; RET Z
+	XOR	A
 	DEC	A
-	RET					; Return failure, NZ
+	RET					; Error RET NZ
 
-SD_TYPE_1:
-	CALL	SD_CS_OFF			; Turn off CS on both SD Cards
-	LD	A,1
-	LD	(@CARD_TYPE),A			; Record it
-	XOR	A,A
-	RET					; Return Z
+;------------------------------------------------ GET CARD VOLTAGE/TYPE --------------------------------------
 
-SD_TYPE_2:					; Confirm type 2
-	CALL	READ_SPI			; value returned in [A] is 00H
-	CALL	READ_SPI			; value returned in [A] is 00H
-	CALL	READ_SPI			; value returned in [A] is 01H
-	CALL	READ_SPI			; value returned in [A] is AAH
-	CALL	SD_CS_OFF			; Turn off CS on both SD Cards
-	CP	A,0AAH				; Must be 0AAH for Type 2 cards
-	JR	NZ,SD_TYPE_0			; Unexpected vaue, classify as unknown
-	LD	A,2				 
-	LD	(@CARD_TYPE),A			; Record it
-	XOR	A,A				
-	RET					; Return Z
-
-NOT_2:	LD	A,0				; Unknown card
-	LD	(@CARD_TYPE),A			; Not Type 1 or Type 2 Card
-	XOR	A,A
+SEND_GET_TYPE:
+	CALL	DRIVE_CS_ON			; Lower CS on current SD card
+	LD	HL,CMD_58			; SEND CMD8 to get Card Voltage
+	CALL	SEND_SD_CMD	
+	CALL	READ_RESULT
+	OR	A
+	JR	Z,GET_TYPE1
+	CALL	SD_CS_OFF
+	XOR	A
 	DEC	A
-	RET					; Return NZ
-	
+	RET					; Error RET NZ
+
+GET_TYPE1:
+	CALL	READ_SPI			; First byte of OCR
+	CALL	SD_CS_OFF			; -- Turn off CS on both SD Cards
+	AND	40H				; Isolate CCS bit
+	LD	C,1				; Assume Type 1
+	JR	Z,GET_TYPE2			; If CCS not set, Type 1
+	INC	C				; Else Type 2
+
+GET_TYPE2:
+	LD	A,C
+	LD	(@CARD_TYPE),A			; Save Card Type
+	XOR	A				; Signal success
+	RET
 	
 ;  ------------------------------------- AVCTIVATE TYPE 2 CARDS  ---------------------------------
 
-TYPE_2_ACTIVATE:				; Initilize the SD card Type 2 cards with CMD55 & CMD44 Commands
+ACTIVATE:
 	LD	B,0				; Will try 256 times (some cards take a while)
 ACT1:	CALL	DELAY_5MS			; Per spec, 5ms between attempts
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
@@ -594,13 +589,12 @@ ACT2:	CALL	DRIVE_CS_ON			; Turn back on, Lower CS on current SD card (required!)
 	CALL	SEND_SD_CMD			
 	CALL	READ_RESULT			; Value returned in [A]
 	CALL	SD_CS_OFF			; -- Turn off CS on both SD Cards
-	CP	A,0
+	CP	A,00H
 	RET	Z				; RET Z
 	DJNZ	ACT1
 	XOR	A
 	DEC	A
 	RET					; Error RET NZ
-
 
 ;  ----------------------------------------------  DEACTIVATE CRC CHECKING  ----------------
 	
@@ -662,14 +656,8 @@ CARD_STATUS_2:
 READ_SECTOR:
 	LD	HL,READ_SEC_MSG1		; '1,  Will read a sector from SD Card.',CR,LF,0H
 	CALL	PMSG
-	LD	A,(@CARD_TYPE)			; Flag to check if SD card type has been determined 
-	OR	A,A
-	JP	NZ,READ_SEC_OK
-	LD	HL,READ_ERR_MSG1		; 'Sorry, SD Card must first be initilized (Menu 0).
-	CALL	PMSG
-	JP	START1				; Back to main menu
-
-READ_SEC_OK:
+	CALL	CARD_CHECK			; Type 2 Card initialized???
+	JP	NZ,START1			; Abort if not
 	LD	HL,ENTER_SEC_NUM		; 'Please enter Sector Number (XXXXH):
 	CALL	PMSG
 	CALL	GET_HEX4
@@ -792,12 +780,8 @@ READ_BUFFER:					;  ROUTINE TO DISPLAY DMA/BUFFER  CONTENTS
 WRITE_SECTOR:
 	LD	HL,WRITE_SEC_MSG1		; '3,  Will read a sector from SD Card.',CR,LF,0H
 	CALL	PMSG
-	LD	A,(@CARD_TYPE)			; Flag to check if SD card type has been determined
-	OR	A,A
-	JP	NZ,WRITE_SEC_OK
-	LD	HL,READ_ERR_MSG1		; 'Sorry, SD Card must first be initilized (Menu 0).
-	CALL	PMSG
-	JP	START1				; Back to main menu
+	CALL	CARD_CHECK			; Type 2 Card initialized???
+	JP	NZ,START1			; Abort if not
 
 WRITE_SEC_OK:
 	LD	HL,ENTER_SEC_NUM		; 'Please enter Sector Number (XXXXH):
@@ -932,16 +916,29 @@ CPM_BOOT:
 	LD	A,0				; Need to get card type
 	LD	(@CARD_TYPE),A			; Flag to indicate SD card type has not yet been determined
 	CALL	SEND_SD_RESET	
-	JP	NZ,BOOT_READ_ERR1		; Error resetting SD Card before boot sector read, CMD0. (Status = 
+	LD	HL,RESET_ERR_MSG		;  'SD_CARD Interface could NOT be Reset (Status = 
+	JP	NZ,CMD_FAIL			; Deselect CS, Low speed CLK, send error Message
 	CALL	PRTDOT
-	
-	CALL	SEND_GET_TYPE
-	JP	NZ,BOOT_READ_ERR2		; Error getting SD card Type before boot sector read, CMD8. (Status = '
+
+	CALL	SEND_IF_COND
+	LD	HL,IF_COND_ERR_MSG		;  'IF COND command failed. (Status =
+	JP	NZ,CMD_FAIL			; Deselect CS, Low speed CLK, send error Message
 	CALL	PRTDOT
-	
-	CALL	TYPE_2_ACTIVATE			; Initilize a Type 2 Card
-	JP	NZ,BOOT_READ_ERR3		; Error activating SD Card Type 2 before boot sector read, CMD55+CMD41. (Status =
+
+	CALL	ACTIVATE			; Initilize a Type 2 Card
+	LD	HL,ACT_ERR_MSG			; SD Card Type 2 Initilization failed (CMD55 or CMD41).
+	JP	NZ,CMD_FAIL			; Deselect CS, Low speed CLK, send error Message
 	CALL	PRTDOT
+
+	CALL	SEND_GET_TYPE			; Determine Card Type
+	LD	HL,SD_TYPE_ERR_MSG		; 'SD Card Type detection failed. (Status = '
+	JP	NZ,CMD_FAIL
+	CALL	PRTDOT
+
+	LD	A,(@CARD_TYPE)
+	CP	2				; Is it Type 2?
+	LD	HL,SD_NOT_SUP_ERR		; 'SD Card Type not supported!'
+	JP	NZ,PMSG				; If not, print message and return to menu
 
 	; This is the main loading loop.  Each MMU bank is 16K, so we
 	; have an inner loop to read and load 32 sectors.  An outer
@@ -1088,6 +1085,7 @@ WAIT_SD_BUSY:
 	; WAIT FOR SD CARD TO BE READY FOR A COMMAND
 	PUSH	AF
 	PUSH	BC
+	LD	B,0
 SEND_SD_CMD1:
 	CALL	READ_SPI
 	INC	A			; FF --> 00
@@ -1167,17 +1165,33 @@ READ_RESULT2:
 	RET				; Return with latest byte read
 
 CMD_FAIL:				; Generalized failure message routine (Message in [HL])
+	IN	A,(SD_DATA_IN)		; Return data in [A] (Is latched in FPGA port)
+	PUSH	AF			; Save it
 	CALL	SD_CS_OFF		; Always, turn off CS on both SD Cards
 	CALL	LOW_SPEED_CLK
 	CALL	PMSG
-	IN	A,(SD_DATA_IN)		; Return data in [A] (Is latched in FPGA port)
-	CALL	ZBITS
+	POP	AF			; Restore last result code
+	CALL	ZBITS			; Print it
 	LD	HL,BITS_END_MSG		; "B) "
 	CALL	PMSG
 	XOR	A
 	DEC	A
 	RET				; Return NZ
 
+CARD_CHECK:
+	LD	A,(@CARD_TYPE)
+	CP	2			; Type 2?
+	RET	Z			; Cool, return OK (Z)
+	LD	HL,SD_NOT_SUP_ERR	; Setup not supported msg
+	CP	1			; Type 1?
+	JR	Z,CARD_CHECK1		; Diagnose it
+	LD	HL,READ_ERR_MSG1	; Setup not init msg
+
+CARD_CHECK1:
+	CALL	PMSG			; Print message
+	XOR	A
+	DEC	A
+	RET				; Return error (NZ)
 					
 DRIVE_CS_ON:				; Lower CS on current SD card	
 	PUSH	AF			; Note no registers altered
@@ -1623,13 +1637,13 @@ BITS_END_MSG:	DB	'B)',CR,LF,0
 RESET_ERR_MSG:	DB	CR,LF,BELL,'SD_CARD was NOT Reset (Status = ',0
 SD_TYPE_MSG:	DB	CR,LF,'Detected SD Card Type ',0
 SD_TYPE_ERR_MSG: DB	CR,LF,BELL,'SD Card Type detection failed. (Status = ' ,0
+IF_COND_ERR_MSG: DB	CR,LF,BELL,'IF COND command failed. (Status = ' ,0
 SD_NOT_SUP_ERR:	DB	CR,LF,BELL,'SD Card Type not supported!',0
 SIZE_OK_MSG:	DB	'Sector size = 512 bytes/sector.',CR,LF,0
 READ_SEC_MSG1:	DB	'1,  Will read a sector.',CR,LF,0H
 READ_ERR_MSG1:	DB	CR,LF,BELL,'SD Card must first be initilized (Menu 0).',CR,LF,0
-CMD55_FAIL_MSG:	DB	CR,LF,BELL,'SD Card Type 2 Initilization failed (CMD55/CMD41) (Status = ',0
-CMD41_55_OK_MSG: DB	'CMD55 & CMD41 Commands OK.',CR,LF
-                DB	'The SD Card initilized correctly.',CR,LF,0
+ACT_ERR_MSG:	DB	CR,LF,BELL,'Activation failed. (Status = ',0
+ACT_OK_MSG:	DB	CR,LF,BELL,'SD Card Activation completed OK.',0
 CRC_ERROR_MSG:	DB	CR,LF,BELL,'Error trying to turn off CRC checking. (Status = ',0
 CRC_OFF_MSG:	DB	'Card CRC checking is now off.',CR,LF,0
 SIZE_ERROR_MSG:	DB	CR,LF,BELL,'Sector size error. (Status = ',0	
@@ -1644,6 +1658,7 @@ SEC_RD1_OK_MSG: DB	'H was read correctly.',0
 RD_BUFFER_MSG:	DB	'2,  Will read a RAM data buffer',CR,LF,0H
 RAM_DATA:	DB	CR,LF,LF,'RAM buffer data. (Starting at RAM location ',0
 CONTINUE_MSG:	DB	CR,LF,'Type any character to continue.',0
+
 
 WRITE_SEC_MSG1:	DB	'3,  Write a sector to SD Card.',CR,LF,0H
 SEC_WR_ERR0_MSG: DB	CR,LF,BELL,'Sector write error, CMD24. (Status = ',0
