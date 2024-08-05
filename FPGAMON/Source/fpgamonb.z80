@@ -42,6 +42,7 @@
 ;	V3.04	7/5/2024	[WBW] Enhanced SD Card protocol handling
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
+;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE

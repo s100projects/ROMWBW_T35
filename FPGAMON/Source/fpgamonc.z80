@@ -42,6 +42,7 @@
 ;	V3.04	7/5/2024	[WBW] Enhanced SD Card protocol handling
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
+;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -484,7 +485,8 @@ SEND_SD_RESET:					; Send Card Reset CMD
 INIT1:	CALL	SPI_DUMMY_CLOCK
 	DJNZ	INIT1
 	LD	B,10H				; Send CMD0 (GOIDLE) a few times
-INIT2:	CALL	DELAY_5MS
+INIT2:	;CALL	DELAY_5MS
+	CALL	SHORT_DELAY
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
 	CALL	SPI_DUMMY_CLOCK
 	LD	HL,CMD_0			; (CMD0 OR 40H) 
@@ -571,7 +573,8 @@ GET_TYPE2:
 
 ACTIVATE:
 	LD	B,0				; Will try 256 times (some cards take a while)
-ACT1:	CALL	DELAY_5MS			; Per spec, 5ms between attempts
+ACT1:	;CALL	DELAY_5MS			; Per spec, 5ms between attempts
+	CALL	SHORT_DELAY
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
 	LD	HL,CMD_55			; Application specific command next
 	CALL	SEND_SD_CMD			
@@ -1086,13 +1089,13 @@ WAIT_SD_BUSY:
 	PUSH	AF
 	PUSH	BC
 	LD	B,0
-SEND_SD_CMD1:
+WAIT_SD_BUSY1:
 	CALL	READ_SPI
 	INC	A			; FF --> 00
-	JR	Z,SEND_SD_CMD2
-	DJNZ	SEND_SD_CMD1
+	JR	Z,WAIT_SD_BUSY2
+	DJNZ	WAIT_SD_BUSY1
 	; WHAT DO WE DO HERE???
-SEND_SD_CMD2:
+WAIT_SD_BUSY2:
 	POP	BC
 	POP	AF
 	RET
@@ -1126,29 +1129,29 @@ SEND_SD_CMD_NOWAIT:
 	
 	
 WRITE_SPI:				; Only [A] register altered
-	PUSH	AF
-WRITE1:	IN	A,(SD_STATUS)
-	AND	A,80H
-	JP	NZ,WRITE1
-	POP	AF
+	;;;PUSH	AF
+WRITE1:	;;;IN	A,(SD_STATUS)
+	;;;AND	A,80H
+	;;;JP	NZ,WRITE1
+	;;;POP	AF
 	OUT	(SD_DATA_OUT),A
 	OUT	(SD_RW),A
-	CALL	SHORT_DELAY		; Seems to require time for busy signal to become valid
-WRITE2:	IN	A,(SD_STATUS)
-	AND	A,80H
-	JP	NZ,WRITE2
+	;CALL	SHORT_DELAY		; Seems to require time for busy signal to become valid
+WRITE2:	;;;IN	A,(SD_STATUS)
+	;;;AND	A,80H
+	;;;JP	NZ,WRITE2
 	RET
 
 
 READ_SPI:				; Only [A] register altered
-	IN	A,(SD_STATUS)		; Wait until SD card is ready.
-	AND	A,80H
-	JP	NZ,READ_SPI
+	;;;IN	A,(SD_STATUS)		; Wait until SD card is ready.
+	;;;AND	A,80H
+	;;;JP	NZ,READ_SPI
 	IN	A,(SD_RW)		; Send Read pulse
-	CALL	SHORT_DELAY		; Seems to require time for busy signal to become valid
+	;CALL	SHORT_DELAY		; Seems to require time for busy signal to become valid
 READ1:	IN	A,(SD_STATUS)
-	AND	A,80H
-	JP	NZ,READ1
+	;;;AND	A,80H
+	;;;JP	NZ,READ1
 	IN	A,(SD_DATA_IN)		; Return data in [A]
 	RET
 
@@ -1244,11 +1247,16 @@ DELAY1:	DJNZ	DELAY1
 	RET
 
 DELAY_5MS:
-	; Delay 5ms assuming 8 MHz operation, so 40,000 TS
-	; At 8 MHz, 1us is 8TS, 5ms = 5000us * 8TS = 40000
+	; Delay 5ms
+	; @ 1 MHz, 1TS is 1us
+	; So, 5ms = 8 (MHz) * 5000 (us) = 40000TS
+	;
+	; !!! In practice, this is NOT working on FPGA Z80
+	; It is taking  about 5,000 times longer than expected???
+	;
 	PUSH	AF
 	PUSH	HL
-	LD	HL,+(40000/72)
+	LD	HL,+(10000/72)
 DELAY_5MS1:
 	EX	(SP),IX			; 23 TS
 	EX	(SP),IX			; 23 TS

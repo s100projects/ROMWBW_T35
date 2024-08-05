@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<efxpt:design_db name="T35SBCextSD_16" device_def="T35F400" location="C:\T35SBCextSD_16-main (2)\T35SBCextSD_16-main" version="2023.2.307" db_version="20232999" last_change_date="Tue Feb  6 23:01:01 2024" xmlns:efxpt="http://www.efinixinc.com/peri_design_db" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.efinixinc.com/peri_design_db peri_design_db.xsd ">
+<efxpt:design_db name="T35SBCextSD_16" device_def="T35F400" version="2024.1.163.1.8" db_version="20241999" last_change_date="Sun Aug  4 12:46:48 2024" xmlns:efxpt="http://www.efinixinc.com/peri_design_db" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.efinixinc.com/peri_design_db peri_design_db.xsd ">
     <efxpt:device_info>
         <efxpt:iobank_info>
             <efxpt:iobank name="1A" iostd="3.3 V LVTTL / LVCMOS"/>

@@ -319,10 +319,10 @@ module  T35SBCextSD_16_top(
     wire    memWR;
     wire    outFF;
     wire    inPortCON_cs;
-wire    c3En;
-wire    ladrEn;
-wire    hadrEn;
-wire    n_jorphant;
+    wire    c3En;
+    wire    ladrEn;
+    wire    hadrEn;
+    wire    n_jorphant;
 
     wire    rom_cs;
     wire    ram_cs;
@@ -404,8 +404,6 @@ wire    n_jorphant;
     wire            SDSpiClr;
     wire            SDLocalClk;
     wire            IntEncGs;
-    reg             kHz400;
-    reg             MHz10;
     reg             MHz25;
     
 ////////////////////////////////////////////////////////////////////////////////////
@@ -452,8 +450,6 @@ wire    n_jorphant;
     wire    ctlDisable;
     
     reg [20:0]  counter;            // 21-bit counter for CPU clock
-    reg [20:0]  counter400;         // 21 bit counter for 400kHz
-    reg  [9:0]  counter10M;         // 21 bit counter fo 10MHz 
     wire [6:0]  z80_stat;           // z80 CPU status register
     wire [6:0]  statusout;          // z80 S100 status outputs
     wire [4:0]  controlBus;         // S100 Control signals mux in
@@ -1767,90 +1763,44 @@ n_bitLatchClr2     #(8)         // encoded/prioritized Interrupt output latch
 /************************************************************************
 *   SD Card via Eight-Bit SPI Interface                                 *        
 ************************************************************************/        
- 
+
 assign sd_n_Acs = SDCardSelect[0];
 assign sd_n_Bcs = SDCardSelect[1];
 
-assign  SD_status[7] = SDSpiBusyFlag;
-assign  SD_status[6] = 1'b0;
-assign  SD_status[5] = 1'b0;
-assign  SD_status[4] = 1'b0;
-assign  SD_status[3] = 1'b0;
-assign  SD_status[2] = 1'b0;
-assign  SD_status[1] = sd_n_Acs;
-assign  SD_status[0] = sd_n_Bcs;
+assign SD_status[7] = SDSpiBusyFlag;
+assign SD_status[6] = 1'b0;
+assign SD_status[5] = 1'b0;
+assign SD_status[4] = 1'b0;
+assign SD_status[3] = 1'b0;
+assign SD_status[2] = 1'b0;
+assign SD_status[1] = sd_n_Acs;
+assign SD_status[0] = sd_n_Bcs;
 
 assign SDSpiClr = (n_reset  & !SDSpiBusyFlag);
-assign SDSpiClkIn = !counter[4];
 
-//***********************************************************************
-//       Generate the 400kHz SLOW SPI Clock                             *
-//***********************************************************************
-parameter   DIVIDEBY400  =   21'd625;
-
-always @(posedge pll0_250MHz)
-    begin
-        if(n_reset == 0)        // if reset set low...
-        begin      
-            counter400 <= 21'b0;       // reset counter to 0
-        end                         // end of reset counter
-        else
-            begin
-                counter400 <= counter400 + 21'd1;
-                if(counter400 >=(DIVIDEBY400-1))
-                    counter400 <= 21'd0;
-                    kHz400 <= (counter400 < DIVIDEBY400/2) ? 1'b1 : 1'b0;
-            end
-     end
-
-//************************************************************************
-//       Generate the 10MHz FAST SPI Clock                               *
-//************************************************************************
-
-parameter   DIVIDEBY25  =   10'd25;
-
-always @(posedge pll0_250MHz)
-    begin
-        if(n_reset == 0)        // if reset set low...
-        begin      
-            counter10M <= 10'b0;       // reset counter to 0
-        end                         // end of reset counter
-        else
-            begin
-                counter10M <= counter10M + 10'd1;
-                if(counter10M >=(DIVIDEBY25-1))
-                    counter10M <= 10'd0;
-                    MHz10 <= (counter10M < DIVIDEBY25/2) ? 1'b1 : 1'b0;
-            end
-     end
-     
-
-//////////////////////////////////////////////////////////////////////////
 spi_master    
     #(.slaves(4),
-	 .d_width(8))
+      .d_width(8))
         sdSPI(
-//        .clock      (!SDLocalClk),               // system clock
-//        .clock      (!counter[0]),               // system clock
-        .clock      (pll0_50MHz),               // system clock
-        .reset_n    (n_reset),                  // asynchronous reset
-        .enable     (SDWrite | SDRead),         // initiate transaction
-        .cpol       (1'b0),                     // spi clock polarity
-        .cpha       (1'b0),                     // spi clock phase
-        .cont       (1'b0),                     // continuous mode command
-        .clk_div    (32'd5),                   // system clock cycles per 1/2 period of sclk
-        .addr       (32'b0),                    // address of slave
-        .tx_data    (DataToSD[7:0]),            // data to transmit from Latch and CPU
-        .miso       (sdMISO),                   // master in, slave out
-        .sclk       (sdCardClk),                // spi clock
-        .ss_n       (SDSlaveSelect),           // slave select
-        .mosi       (sdMOSI),                 // master out, slave in
-        .busy       (SDSpiBusyFlag),            // busy / data ready signal OUT
-        .rx_data    (DataFmSD[7:0])       // rtc data received
+        .clock      (pll0_50MHz),        // system clock
+        .reset_n    (n_reset),           // asynchronous reset
+        .enable     (SDWrite | SDRead),  // initiate transaction
+        .cpol       (1'b0),              // spi clock polarity
+        .cpha       (1'b0),              // spi clock phase
+        .cont       (1'b0),              // continuous mode command
+        .clk_div    (32'd5),             // system clock cycles per 1/2 period of sclk
+        .addr       (32'b0),             // address of slave
+        .tx_data    (DataToSD[7:0]),     // data to transmit from Latch and CPU
+        .miso       (sdMISO),            // master in, slave out
+        .sclk       (sdCardClk),         // spi clock
+        .ss_n       (SDSlaveSelect),     // slave select
+        .mosi       (sdMOSI),            // master out, slave in
+        .busy       (SDSpiBusyFlag),     // busy / data ready signal OUT
+        .rx_data    (DataFmSD[7:0])      // rtc data received
         );
 
 n_bitLatchClr2      #(8)
-   LatchDataToSDcard(                     // Data latch from CPU to SD (Port 6C OUT)
+  LatchDataToSDcard(                     // Data latch from CPU to SD (Port 6C OUT)
     .clk        (pll0_250MHz),
     .load       (DataToSD_cs),
     .clr        (n_reset),
@@ -1859,7 +1809,7 @@ n_bitLatchClr2      #(8)
     );
 
 n_bitLatchClr2      #(8)
-   dataFromSDcard(                   // Data latch from SD SPI to CPU (Port 6C IN)
+  dataFromSDcard(                       // Data latch from SD SPI to CPU (Port 6C IN)
     .clk        (pll0_250MHz),
     .load       (DataFmSD_cs),          // inverting fixed no real data from RTC
     .clr        (n_reset),              // low to clear latch upon reset
@@ -1868,74 +1818,41 @@ n_bitLatchClr2      #(8)
     );
     
 n_bitLatchClr2      #(8)
-   SDStatus(                   // SD Status Data latch, status to CPU (Port 6E IN)
+  SDStatus(                   // SD Status Data latch, status to CPU (Port 6E IN)
     .clk        (pll0_250MHz),
-    .load       (SD_status_cs),          // inverting fixed no real data from RTC
+    .load       (SD_status_cs),         // inverting fixed no real data from RTC
     .clr        (n_reset),              // low to clear latch upon reset
-    .inData     (SD_status[7:0]),        // Data byte back from RTC
-    .regOut     (SD_statusToCPU[7:0])      // latch data to send to CPU INPUT
+    .inData     (SD_status[7:0]),       // Data byte back from RTC
+    .regOut     (SD_statusToCPU[7:0])   // latch data to send to CPU INPUT
     );
      
-n_bitLatchClr2      #(2)
-   SDSPI_select(                   // SD Card A/B select latch, Port 6E OUT,bits 0 & 1
+n_bitLatchClr3      #(2,'b11)
+  SDSPI_select(                         // SD Card A/B select latch, Port 6E OUT,bits 0 & 1
     .clk        (pll0_250MHz),
     .load       (SD_Card_select_cs),
-     .clr       (n_reset),
-     .inData   (cpuDataOut[1:0]),
-     .regOut   (SDCardSelect[1:0])
-     );
-     
-dff    SDSPI_Speed(                     // SD SPI Speed Latch (Port 6D, bit 0 Out)
-        .clk    (pll0_250MHz),
-        .en     (SD_Clk_cs),             // Port 6D, bit D0 hi=10MHz, lo= 400kHz
-        .rst_n  (n_reset),              // clear the latch upon reset
-        .din    (cpuDataOut[0]),        // CPU Data Out bit 0
-        .q      (SDClkSpeed)              // RTC SPI CS FPGA output
-        ); 
+    .clr        (n_reset),
+    .inData     (cpuDataOut[1:0]),
+    .regOut     (SDCardSelect[1:0])
+    );
 
-SDClockMux      SDclockSelect(
-        .MHz10          (MHz10),
-        .kHz400         (kHz400),
-        .pll0_250MHz    (pll0_250MHz),
-        .SDClkSelect    (SDClkSpeed),
-        .SDLocalClk     (SDLocalClk)
-        );
-        
-dff    SDSpiWrite1(
-        .clk    (pll0_250MHz),
-        .en     (SDWrite_cs),
-        .rst_n  (SDSpiClr),
-        .din    (1'b1),
-        .q      (SDWriteOut1)
-        );
+dff
+  SDSpiWrite(
+    .clk        (pll0_250MHz),
+    .en         (SDWrite_cs),
+    .rst_n      (SDSpiClr),
+    .din        (1'b1),
+    .q          (SDWrite)
+    );
 
-dff   SDSpiWrite2(
-        .clk    (pll0_250MHz),
-//        .en     (!SDLocalClk),
-//        .en     (!SDSpiClkIn),
-        .en     (!counter[0]),
-        .rst_n  (SDSpiClr),
-        .din    (SDWriteOut1),
-        .q      (SDWrite)
-        );
+dff
+  SDSpiRead(
+    .clk        (pll0_250MHz),
+    .en         (SDRead_cs),
+    .rst_n      (SDSpiClr),
+    .din        (1'b1),
+    .q          (SDRead)
+    );
 
-dff   SDSpiRead1(
-        .clk    (pll0_250MHz),
-        .en     (SDRead_cs),
-        .rst_n  (SDSpiClr),
-        .din     (1'b1),
-        .q       (SDReadOut1)
-        );
-
-dff   SDSpiRead2(
-        .clk     (pll0_250MHz),
-//        .en      (!SDLocalClk),
-//        .en      (!SDSpiClkIn),
-        .en     (!counter[0]),
-        .rst_n   (SDSpiClr),
-        .din     (SDReadOut1),
-        .q       (SDRead)
-        );
 `endif
 
 /****************************************************************************

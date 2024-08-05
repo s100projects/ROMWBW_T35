@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<efx:project name="T35SBCextSD_16" description="" last_change="1721767962" sw_version="2023.2.307.1.14" last_run_state="pass" last_run_flow="bitstream" config_result_in_sync="true" design_ood="sync" place_ood="sync" route_ood="sync" xmlns:efx="http://www.efinixinc.com/enf_proj" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.efinixinc.com/enf_proj enf_proj.xsd">
+<efx:project name="T35SBCextSD_16" description="" last_change="1722811777" sw_version="2024.1.163.1.8" last_run_state="pass" last_run_flow="bitstream" config_result_in_sync="true" design_ood="sync" place_ood="sync" route_ood="sync" xmlns:efx="http://www.efinixinc.com/enf_proj" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.efinixinc.com/enf_proj enf_proj.xsd">
     <efx:device_info>
         <efx:family name="Trion"/>
         <efx:device name="T35F400"/>
@@ -39,14 +39,14 @@
         <efx:design_file name="ps2_keyboard_to_ascii.vhd" version="default" library="default"/>
         <efx:design_file name="T80_Pack.vhd" version="default" library="default"/>
         <efx:design_file name="dff.v" version="default" library="default"/>
-        <efx:design_file name="SDClkMux.v" version="default" library="default"/>
         <efx:design_file name="spi_master.vhd" version="default" library="default"/>
         <efx:design_file name="regfile.v" version="default" library="default"/>
         <efx:design_file name="mmu.v" version="default" library="default"/>
+        <efx:design_file name="n_bitLatchClr3.v" version="default" library="default"/>
         <efx:top_vhdl_arch name=""/>
     </efx:design_info>
     <efx:constraint_info>
-        <efx:sdc_file name="T35SBCextSD_16-main.sdc"/>
+        <efx:sdc_file name="T35SBCextSD_16.pt.sdc"/>
         <efx:inter_file name=""/>
     </efx:constraint_info>
     <efx:sim_info/>
@@ -81,6 +81,7 @@
         <efx:param name="optimize-zero-init-rom" value="1" value_type="e_option"/>
         <efx:param name="use-logic-for-small-mem" value="64" value_type="e_integer"/>
         <efx:param name="use-logic-for-small-rom" value="64" value_type="e_integer"/>
+        <efx:param name="bram-push-tco-outreg" value="0" value_type="e_option"/>
     </efx:synthesis>
     <efx:place_and_route tool_name="efx_pnr">
         <efx:param name="work_dir" value="work_pnr" value_type="e_string"/>
