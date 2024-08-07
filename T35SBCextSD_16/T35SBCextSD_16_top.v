@@ -397,6 +397,7 @@ module  T35SBCextSD_16_top(
     wire            SDReadOut1;         // SD Read intermediate signal
     wire            SDWrite;            // SD Write signal from FF to SPI interface
     wire            SDRead;             // SD Read signal from FF to SPI interface
+    wire            SDWait;             // SD Wait signal
     wire            SDWriteClr;
     wire            SDspiBusy_cs;
     wire            SDSpi_cs;
@@ -1818,7 +1819,7 @@ n_bitLatchClr2      #(8)
     );
     
 n_bitLatchClr2      #(8)
-  SDStatus(                   // SD Status Data latch, status to CPU (Port 6E IN)
+  SDStatus(                             // SD Status Data latch, status to CPU (Port 6E IN)
     .clk        (pll0_250MHz),
     .load       (SD_status_cs),         // inverting fixed no real data from RTC
     .clr        (n_reset),              // low to clear latch upon reset
@@ -1838,7 +1839,7 @@ n_bitLatchClr3      #(2,'b11)
 dff
   SDSpiWrite(
     .clk        (pll0_250MHz),
-    .en         (SDWrite_cs),
+    .en         (SDWrite_cs & !SDWait),
     .rst_n      (SDSpiClr),
     .din        (1'b1),
     .q          (SDWrite)
@@ -1847,10 +1848,19 @@ dff
 dff
   SDSpiRead(
     .clk        (pll0_250MHz),
-    .en         (SDRead_cs),
+    .en         (SDRead_cs & !SDWait),
     .rst_n      (SDSpiClr),
     .din        (1'b1),
     .q          (SDRead)
+    );
+
+dff
+  SDSpiWait(
+    .clk        (pll0_250MHz),
+    .en         (SDSpiBusyFlag),
+    .rst_n      (SDWrite_cs | SDRead_cs),
+    .din        (1'b1),
+    .q          (SDWait)
     );
 
 `endif
