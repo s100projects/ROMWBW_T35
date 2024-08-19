@@ -40,7 +40,7 @@ Now, download a RomWBW disk image from the [RomWBW Repository](https://github.co
 You will need to download the latest Development Snapshot from the [RomWBW Releases Page](https://github.com/wwarthen/RomWBW/releases).
 Use the dropdown to access the assets of the release and download the package file which will be
 called something similar to RomWBW-v3.5.0-dev.60-Package.zip.  Within the Binary directory within
-the .zip file, you will find a file called "hd1k_fz80_combo.img".  This is a binary disk image file
+the .zip file, you will find a file called "FZ80_std_hd1k_combo.img".  This is a binary disk image file
 that must be written to either a CF or SD Card starting at the first sector.
 You can do this with Win32DiskImager on Windows or dd on Linux.
 
