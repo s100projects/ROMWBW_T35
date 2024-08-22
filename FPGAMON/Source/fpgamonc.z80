@@ -1,4 +1,5 @@
 ;	SBC-MON2.Z80  This is a stripped down version of the main MASTER-Z80 (and SBC-MON.Z80 monitor) programs 
+;	SBC-MON2.Z80  This is a stripped down version of the main MASTER-Z80 (and SBC-MON.Z80 monitor) programs 
 ;	for use with the S100 bus Z80-FPGA SBC. It will not work with other Z80 CPU Boards without modifications.
 ; 
 ;	Assemble and SLR's Z80ASM Assembler (Can also use the Cromemco Assembler)
@@ -43,6 +44,7 @@
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
+;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -51,6 +53,7 @@ TRUE		EQU	NOT FALSE
 ;        Basic MONITOR Routines		Page #0/Power-up
 ;        IDE Routines			Page #1
 ;        SD Card Routines		Page #2
+;        RTC Routines			Page #3
 ;--------------------------------------------------------
 ;
 ;
@@ -485,8 +488,7 @@ SEND_SD_RESET:					; Send Card Reset CMD
 INIT1:	CALL	SPI_DUMMY_CLOCK
 	DJNZ	INIT1
 	LD	B,10H				; Send CMD0 (GOIDLE) a few times
-INIT2:	;CALL	DELAY_5MS
-	CALL	SHORT_DELAY
+INIT2:	CALL	DELAY_5MS
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
 	CALL	SPI_DUMMY_CLOCK
 	LD	HL,CMD_0			; (CMD0 OR 40H) 
@@ -573,8 +575,7 @@ GET_TYPE2:
 
 ACTIVATE:
 	LD	B,0				; Will try 256 times (some cards take a while)
-ACT1:	;CALL	DELAY_5MS			; Per spec, 5ms between attempts
-	CALL	SHORT_DELAY
+ACT1:	CALL	DELAY_5MS			; Per spec, 5ms between attempts
 	CALL	DRIVE_CS_ON			; Lower CS on current SD card
 	LD	HL,CMD_55			; Application specific command next
 	CALL	SEND_SD_CMD			
@@ -1247,6 +1248,10 @@ DELAY1:	DJNZ	DELAY1
 	RET
 
 DELAY_5MS:
+	PUSH	BC
+	LD	B,0
+	JR	DELAY1
+;
 	; Delay 5ms
 	; @ 1 MHz, 1TS is 1us
 	; So, 5ms = 8 (MHz) * 5000 (us) = 40000TS

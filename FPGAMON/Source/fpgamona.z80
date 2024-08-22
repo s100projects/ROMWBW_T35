@@ -43,6 +43,7 @@
 ;	V3.05	7/12/2024	[WBW] Converted SD CPM Boot to RomWBW load
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
+;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -51,6 +52,7 @@ TRUE		EQU	NOT FALSE
 ;        Basic MONITOR Routines		Page #0/Power-up
 ;        IDE Routines			Page #1
 ;        SD Card Routines		Page #2
+;        RTC Routines			Page #3
 ;--------------------------------------------------------
 ;
 ;
@@ -2046,7 +2048,7 @@ SCCINIT_B:
 ;-----------------------------------------------------------------------------------------------------
 ;
 SIGNON_MSG:	DB SCROLL,QUIT,NO_ENH,FAST,BELL,'$'		
-SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.07 J.Monahan, 8/2/2024$' 	
+SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.07a J.Monahan, 8/2/2024$' 	
 
 MAIN_MENU_MSG:	DB	CR,LF,LF
   		DB	'A=Memmap     D=Show RAM   E=Echo Text   F=Fill RAM '
