@@ -45,6 +45,8 @@
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
+;	V3.08	9/4/2024	[WBW] Exempt VGA frame buffer from RAM size, stack now at E000H
+;	V3.08a	9/4/2024	[WBW] Bug fix: VGA variables mislocated
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -275,13 +277,6 @@ SD_CS_READ_B	EQU	40H;		; Bit to test if Drive B CS* pin is low (not currently us
 
 MONITOR		EQU	0F000H		; Location of Z80 ROM monitor when done.
 
-DEBUG		EQU	TRUE		; If TRUE all sector reads will display the actual 512 bytes of data read
-SPI_SPEED	EQU	TRUE		; If TRUE all sector Reads/Writes will switch the SPI interface from 40Khz to 10MHz
-
-CONSTAT		EQU	0H		; Console Status Port
-CONIN		EQU	1H		; Console IN Port
-CONOUT		EQU	1H		; Console OUT Port
-
 ;-----------------  RTC PORT ASSIGNMENTS ---------------------------------------------------------------
 ;
 SPI_BASE_PORT	EQU	068H			; Base I/O port fot SPI module
@@ -313,6 +308,9 @@ ENABLE_OSC	EQU	80H			;Bit to enable/start the RTC chip (0=start, 1=stop)
 WP		EQU	40H			;Write Protect. Bit must be 0 to alter any other register. 
 						;Note alarms etc are not implemented in this simple example.
 
+DEBUG		EQU	TRUE		; If TRUE all sector reads will display the actual 512 bytes of data read
+SPI_SPEED	EQU	TRUE		; If TRUE all sector Reads/Writes will switch the SPI interface from 40Khz to 10MHz
+
 ; -------------------------- RAM usage for IDE & RTC Routines (in Z80_MONB.Z80,Z80_MONC.Z80 & Z80_MOND.Z80)  ---------------
 
 IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters
@@ -340,9 +338,9 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
 
-@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
-@LOCAL_X	EQU	VGA_BASE + 1F2EH
-@LOCAL_Y	EQU	VGA_BASE + 1F30H
+@RAM_POINTER	EQU	RAM_BASE + 1F2CH
+@LOCAL_X	EQU	RAM_BASE + 1F2EH
+@LOCAL_Y	EQU	RAM_BASE + 1F30H
 
 
 

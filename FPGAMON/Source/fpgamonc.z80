@@ -45,6 +45,8 @@
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
+;	V3.08	9/4/2024	[WBW] Exempt VGA frame buffer from RAM size, stack now at E000H
+;	V3.08a	9/4/2024	[WBW] Bug fix: VGA variables mislocated
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -305,9 +307,9 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
 
-@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
-@LOCAL_X	EQU	VGA_BASE + 1F2EH
-@LOCAL_Y	EQU	VGA_BASE + 1F30H
+@RAM_POINTER	EQU	RAM_BASE + 1F2CH
+@LOCAL_X	EQU	RAM_BASE + 1F2EH
+@LOCAL_Y	EQU	RAM_BASE + 1F30H
 
 
 

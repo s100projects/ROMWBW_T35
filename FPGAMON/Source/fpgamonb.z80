@@ -45,6 +45,8 @@
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
+;	V3.08	9/4/2024	[WBW] Exempt VGA frame buffer from RAM size, stack now at E000H
+;	V3.08a	9/4/2024	[WBW] Bug fix: VGA variables mislocated
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -253,7 +255,29 @@ BUFFER$ORG	EQU	3000H		;<----- Will place all sector data here
 CPM$BOOT$COUNT	EQU	12		;Allow up to 12 CPM sectors for CPMLDR
 CPMLDR$ADDRESS	EQU	100H		;Load the CPMLDR at 100H in RAM 
 
-DEBUG EQU FALSE				;For a display of error codes returned from CF-Card drive
+RAM_BANK	EQU	36H		;Port to switch Low/High 32K RAM Page
+ROM_PAGE	EQU	07H		;Set ROM page of FPGA ROM
+
+SD_CARD_BASE	EQU	06CH
+
+SD_DATA_OUT	EQU	SD_CARD_BASE		; (6CH) Data TO port to SD CONTRROLLER
+SD_DATA_IN	EQU	SD_CARD_BASE		; (6CH) Data TO port to SD CONTRROLLER
+SD_SPEED_PORT	EQU	SD_CARD_BASE+1		; (6DH) HIGH TO READ/WRITE SECTORS WITH HIGH SPEED SPI CLOCK
+SD_CS_PORT	EQU	SD_CARD_BASE+2		; (6EH) SD Select Port
+SD_STATUS	EQU	SD_CARD_BASE+2		; (6EH) SD Status Port
+SD_RW		EQU	SD_CARD_BASE+3		; (6FH) Port to pulse SPI Read/Write
+
+HIGH_SPEED	EQU	01H;		; Select SPI 10MHz CLK
+LOW_SPEED	EQU	00H		; Select SPI 4KHz CLK (Default on startup)
+SD_CS_A		EQU	0FEH		; CS* select bit for SD Card drive A
+SD_CS_B		EQU	0FDH		; CS* select bit for SD Card drive B 
+SD_BUSY		EQU	01H;
+SD_CS_READ_A	EQU	80H;		; Bit to test if Drive A CS* pin is low (not currently used)
+SD_CS_READ_B	EQU	40H;		; Bit to test if Drive B CS* pin is low (not currently used)
+
+MONITOR		EQU	0F000H		; Location of Z80 ROM monitor when done.
+
+DEBUG EQU FALSE				; For a display of error codes returned from CF-Card drive
 
 
 ; -------------------------- RAM usage for IDE & RTC Routines (in Z80_MONB.Z80,Z80_MONC.Z80 & Z80_MOND.Z80)  ---------------
@@ -283,9 +307,9 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
 
-@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
-@LOCAL_X	EQU	VGA_BASE + 1F2EH
-@LOCAL_Y	EQU	VGA_BASE + 1F30H
+@RAM_POINTER	EQU	RAM_BASE + 1F2CH
+@LOCAL_X	EQU	RAM_BASE + 1F2EH
+@LOCAL_Y	EQU	RAM_BASE + 1F30H
 
 
 

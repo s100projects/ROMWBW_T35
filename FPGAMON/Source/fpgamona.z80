@@ -46,6 +46,7 @@
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
 ;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
 ;	V3.08	9/4/2024	[WBW] Exempt VGA frame buffer from RAM size, stack now at E000H
+;	V3.08a	9/4/2024	[WBW] Bug fix: VGA variables mislocated
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -276,6 +277,37 @@ SD_CS_READ_B	EQU	40H;		; Bit to test if Drive B CS* pin is low (not currently us
 
 MONITOR		EQU	0F000H		; Location of Z80 ROM monitor when done.
 
+;-----------------  RTC PORT ASSIGNMENTS ---------------------------------------------------------------
+;
+SPI_BASE_PORT	EQU	068H			; Base I/O port fot SPI module
+;SPI_ADDRESS_OUT	EQU	SPI_BASE_PORT		; 68H, Data OUT port from SPI module to RTC
+SPI_DATA_OUT	EQU	SPI_BASE_PORT+0		; 68H, Data OUT port from SPI module to RTC
+SPI_DATA_IN	EQU	SPI_BASE_PORT+0		; 68H, Data IN from EEPROM
+SPI_CS		EQU	SPI_BASE_PORT+2		; 6AH, CS Data OUT port to SPI/EEPROM module
+SPI_STATUS	EQU	SPI_BASE_PORT+2		; 6AH, Busy Flag IN port from SPI/EEPROM
+
+SPI_READ	EQU	SPI_BASE_PORT+3		; 6B, Read pulse to SPI module
+SPI_WRITE	EQU	SPI_BASE_PORT+3		; 6B, Write pulse to SPI module
+
+RTC_CS_LOW		EQU	00H		; Bit 0 has CS  (Note, HIGH to select chip)
+RTC_CS_HIGH		EQU	01H			
+
+RTC_SECONDS	EQU	0H			;All registers OR 80H for WRITE Address
+RTC_MINUTES	EQU	1H
+RTC_HOURS	EQU	2H
+RTC_DAY		EQU	3H
+RTC_DATE	EQU	4H
+RTC_MONTH	EQU	5H
+RTC_YEAR	EQU	6H
+
+RTC_CTL_REG	EQU	0FH
+RTC_STATUS_REG	EQU	10H
+RTC_RAM		EQU	20H			;20H -- 7FH
+
+ENABLE_OSC	EQU	80H			;Bit to enable/start the RTC chip (0=start, 1=stop)
+WP		EQU	40H			;Write Protect. Bit must be 0 to alter any other register. 
+						;Note alarms etc are not implemented in this simple example.
+
 DEBUG EQU FALSE				; For a display of error codes returned from CF-Card drive
 
 
@@ -306,9 +338,9 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
 
-@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
-@LOCAL_X	EQU	VGA_BASE + 1F2EH
-@LOCAL_Y	EQU	VGA_BASE + 1F30H
+@RAM_POINTER	EQU	RAM_BASE + 1F2CH
+@LOCAL_X	EQU	RAM_BASE + 1F2EH
+@LOCAL_Y	EQU	RAM_BASE + 1F30H
 
 
 
@@ -2066,7 +2098,7 @@ SCCINIT_B:
 ;-----------------------------------------------------------------------------------------------------
 ;
 SIGNON_MSG:	DB SCROLL,QUIT,NO_ENH,FAST,BELL,'$'		
-SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.08 J.Monahan, 9/4/2024$' 	
+SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.08a J.Monahan, 9/4/2024$' 	
 
 MAIN_MENU_MSG:	DB	CR,LF,LF
   		DB	'A=Memmap     D=Show RAM   E=Echo Text   F=Fill RAM '
