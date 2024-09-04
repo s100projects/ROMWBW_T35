@@ -14,6 +14,7 @@ module memAdrDecoder
     input           memread,
 //    input           reset_cs,
     input           n_jorphant,
+    input           vRamEn,
     input           romDisable,
    //
     output          rom_cs,     // rom_cs is high to select ROM
@@ -25,9 +26,9 @@ module memAdrDecoder
 //    assign rom_cs = (address[15:9] == 7'b0000000) && memread;   // Prj 6
     assign rom_cs = (address[15:12] == 4'b1111) && memread && romDisable;       // PRJ 6A    
 
-    assign ram_cs = !rom_cs && (memwrite | memread) && n_jorphant;
+    assign ram_cs = !rom_cs && (memwrite | memread) && n_jorphant && !vgaRam_cs;
 //    assign ram_cs = !romAdr && (memwrite | memread);
 
-    assign vgaRam_cs = (address[15:12] == 4'b1110) && (memwrite | memread);
+    assign vgaRam_cs = (address[15:12] == 4'b1110) && (memwrite | memread) && vRamEn;
     
 endmodule

@@ -71,7 +71,7 @@ module  T35SBCextSD_16_top(
     s100_sMWRT,
     s100_pHLDA,
     s100_PHI,
-    s100_CLOCK,         // 2MHz Clock signal to S100 bus    
+    s100_CLOCK,
     s100_sHLTA,
     s100_sINTA,
     s100_n_sWO,
@@ -298,6 +298,8 @@ module  T35SBCextSD_16_top(
     wire    [7:0]   debugReg;
     wire    [7:0]   fbarSbcLeds;    // out/in port 06, BAR LEDs
     wire    [7:0]   miscControl;    // Out port 07, Misc control
+    wire    [7:0]   outVRamCtl;        // Out port 08, VGA RAM control
+    
     wire    [7:0]   outramA16;       // IN=IOBYTE switch, Out (d0)=RAM A16
     wire    [7:0]   usbStat;        // USB UART Input Status port
     wire    [7:0]   usbRxData;      // USB UART received data
@@ -407,8 +409,14 @@ module  T35SBCextSD_16_top(
     wire            IntEncGs;
     reg             MHz25;
     
-////////////////////////////////////////////////////////////////////////////////////
+////////////////    MMU Enables     /////////////////////////////////////////
+
+    wire            MMURegFileRdEn;
+    wire            MMUPageEnWrEn;
+    wire            MMURegFileWrEn;
+    wire            outVRamCtl_cs;
     
+////////////////////////////////////////////////////////////////////////////////////////    
     wire    outrama16_cs;
     wire    n_inta;             // internal INTA signal
     wire    inta;               // TEMPorary POSITIVE INTA 
@@ -432,6 +440,7 @@ module  T35SBCextSD_16_top(
     wire    pDBIN;
     wire    romDisable;
     wire    romHigh;
+    wire    VRamEnable;
     wire    usbDataReady;
     wire    usbUARTbusy;
     wire    usbByteRcvd;
@@ -492,7 +501,7 @@ localparam FPGA_VER = 7'b0001110;
 assign seg7_dp = !(n_resetLatch & counter[20]); // Tick to show activity
 assign cpuClkOut_P19 = cpuClock;
 
-assign  diagLED = !usbUARTerror;      //s100_n_INT;       //1'b1;
+assign  diagLED = !outVRamCtl[0]; // !usbUARTerror;      //s100_n_INT;       //1'b1;/////////////////////////////////////////////////////////////////////
 
 assign spare_P1  = s100_pSTVAL;
 assign spare_P17 = pstval; 
@@ -532,6 +541,7 @@ assign  memRD = (!z80_n_rd & !z80_n_mreq);   // create the basic memory READ sta
 assign  memWR = (!z80_n_wr & !z80_n_mreq);   // create the basic memory WRITE status bit
 assign  romDisable = !miscControl[1];
 assign  romHigh = (miscControl[0] | miscControl[2]);
+assign  VRamEnable = outVRamCtl[0];  // outVRamCtl      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 assign  iorq = !z80_n_iorq;                 // inverted iorq for wait state generation
 
 assign boardWait = (romWait & ioWait);
@@ -867,6 +877,7 @@ memAdrDecoder  mem_cs(
     .romDisable     (romDisable),
     .rom_cs         (rom_cs),
     .ram_cs         (ram_cs),
+    .vRamEn         (VRamEnable),
     .vgaRam_cs      (vgaRam_cs)
      );
 
@@ -973,7 +984,8 @@ portDecoder ports_cs(
     .SDRead_cs              (SDRead_cs),
     .MMUPageEnWrEn          (MMUPageEnWrEn),
     .MMURegFileWrEn         (MMURegFileWrEn),
-    .MMURegFileRdEn         (MMURegFileRdEn)
+    .MMURegFileRdEn         (MMURegFileRdEn),
+    .outVRamCtl_cs          (outVRamCtl_cs)
      );
   
 /************************************************************************************
@@ -1045,6 +1057,19 @@ n_bitReg    outPort07(
      .inData    (cpuDataOut),
      .regOut    (miscControl));
 
+/************************************************************************************
+*   Output Port 08      MMU TEST Control bits                                       *
+************************************************************************************/
+n_bitReg    outPort08(
+ //    #(parameter N = 8)(
+     .load      (outVRamCtl_cs),
+     .clock     (T80Clock),
+     .clr       (!n_reset),
+     .inData    (cpuDataOut),
+     .regOut    (outVRamCtl));
+
+     
+     
 /************************************************************************************
 *   Port 35  Out = USB Tx Data Out                                                  *
 ************************************************************************************/

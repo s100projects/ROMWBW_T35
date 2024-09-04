@@ -44,6 +44,7 @@
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
+;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -118,6 +119,7 @@ SW_TMA0	EQU	0EDH			;INPUT FROM THIS PORT LOWERS DMA0* (SWITCHES IN THE 8088,8086
 
 RAM_BANK	EQU	36H		;Port to switch Low/High 32K RAM Page
 ROM_PAGE	EQU	07H		;Port to inactivate the the onboard FPGA ROM or switch in/out one of the four 4k pages.
+VGA_PAGE	EQU	08H		;Port to enable VGAframe buffer (bit 0 high to enable)
 
 MPGSEL_0	EQU	78H		; Z2 MEM MGR BANK 0 PAGE SELECT REG (0K-16K)
 MPGSEL_1	EQU	79H		; Z2 MEM MGR BANK 1 PAGE SELECT REG (16K-32K)
@@ -137,9 +139,9 @@ VGA_COLOR	EQU	0C2H		;Port to set text color
 VGA_BASE	EQU	0E000H		;The VGA text will reside from E000H to EC7FH
 VGA_BASE_END	EQU	0EC7FH		;Last character at bottom RHS
 TOTAL_VGA_LINES	EQU	38		;26H
-RAM_POINTER	EQU	VGA_BASE+0FFEH	;Will store VGA RAM Pointer at very top or its RAM.
-LOCAL_X		EQU	VGA_BASE+0FFDH
-LOCAL_Y		EQU	VGA_BASE+0FFCH
+;;;RAM_POINTER	EQU	VGA_BASE + 0FFEH	;Will store VGA RAM Pointer at very top or its RAM.
+;;;LOCAL_X		EQU	VGA_BASE + 0FFDH
+;;;LOCAL_Y		EQU	VGA_BASE + 0FFCH
 
 MODEM_SEND_MASK	EQU	4
 SEND_READY	EQU	4		;VALUE WHEN READY
@@ -211,7 +213,7 @@ REGSECCNT	EQU	IDEcs0line + IDEa1line				;(0AH)
 REGSECTOR	EQU	IDEcs0line + IDEa1line + IDEa0line		;(0BH)
 REGCYLINDERLSB	EQU	IDEcs0line + IDEa2line				;(0CH)
 REGCYLINDERMSB	EQU	IDEcs0line + IDEa2line + IDEa0line		;(0DH)
-REGSHD	EQU	IDEcs0line + IDEa2line + IDEa1line			;(0EH)
+REGSHD		EQU	IDEcs0line + IDEa2line + IDEa1line		;(0EH)
 REGCOMMAND	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line	;(0FH)
 REGSTATUS	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line
 REGCONTROL	EQU	IDEcs1line + IDEa2line + IDEa1line
@@ -270,7 +272,6 @@ SD_CS_B		EQU	0FDH		; CS* select bit for SD Card drive B
 SD_BUSY		EQU	01H;
 SD_CS_READ_A	EQU	80H;		; Bit to test if Drive A CS* pin is low (not currently used)
 SD_CS_READ_B	EQU	40H;		; Bit to test if Drive B CS* pin is low (not currently used)
-					
 
 MONITOR		EQU	0F000H		; Location of Z80 ROM monitor when done.
 
@@ -314,7 +315,7 @@ WP		EQU	40H			;Write Protect. Bit must be 0 to alter any other register.
 
 ; -------------------------- RAM usage for IDE & RTC Routines (in Z80_MONB.Z80,Z80_MONC.Z80 & Z80_MOND.Z80)  ---------------
 
-IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters 
+IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters
 buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 
 @DMA		EQU	RAM_BASE + 1F00H	;Remember Stack is at ~DFF0H
@@ -338,6 +339,11 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CARD_TYPE	EQU	RAM_BASE + 1F26H	;For SD cards
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
+
+@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
+@LOCAL_X	EQU	VGA_BASE + 1F2EH
+@LOCAL_Y	EQU	VGA_BASE + 1F30H
+
 
 
 ;///////////////////////////////////////////////////////////////////////////////////////////////////////////////////

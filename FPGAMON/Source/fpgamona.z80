@@ -44,6 +44,8 @@
 ;	V3.06	7/24/2024	[WBW] Improved SD Card type detection
 ;	V3.07	8/2/2024	[WBW] Removed SD Card SPI read/write delay based on FPGA improvements
 ;	V3.07a	8/22/2024	[WBW] Improved loop delay timing in SD Card Activation 
+;	V3.07b	9/4/2024	[WBW] Support port 0x08 VGA frame buffer enable
+;	V3.08	9/4/2024	[WBW] Exempt VGA frame buffer from RAM size, stack now at E000H
 ;
 FALSE		EQU	0
 TRUE		EQU	NOT FALSE
@@ -118,6 +120,7 @@ SW_TMA0	EQU	0EDH			;INPUT FROM THIS PORT LOWERS DMA0* (SWITCHES IN THE 8088,8086
 
 RAM_BANK	EQU	36H		;Port to switch Low/High 32K RAM Page
 ROM_PAGE	EQU	07H		;Port to inactivate the the onboard FPGA ROM or switch in/out one of the four 4k pages.
+VGA_PAGE	EQU	08H		;Port to enable VGAframe buffer (bit 0 high to enable)
 
 MPGSEL_0	EQU	78H		; Z2 MEM MGR BANK 0 PAGE SELECT REG (0K-16K)
 MPGSEL_1	EQU	79H		; Z2 MEM MGR BANK 1 PAGE SELECT REG (16K-32K)
@@ -137,9 +140,9 @@ VGA_COLOR	EQU	0C2H		;Port to set text color
 VGA_BASE	EQU	0E000H		;The VGA text will reside from E000H to EC7FH
 VGA_BASE_END	EQU	0EC7FH		;Last character at bottom RHS
 TOTAL_VGA_LINES	EQU	38		;26H
-RAM_POINTER	EQU	VGA_BASE+0FFEH	;Will store VGA RAM Pointer at very top or its RAM.
-LOCAL_X		EQU	VGA_BASE+0FFDH
-LOCAL_Y		EQU	VGA_BASE+0FFCH
+;;;RAM_POINTER	EQU	VGA_BASE + 0FFEH	;Will store VGA RAM Pointer at very top or its RAM.
+;;;LOCAL_X		EQU	VGA_BASE + 0FFDH
+;;;LOCAL_Y		EQU	VGA_BASE + 0FFCH
 
 MODEM_SEND_MASK	EQU	4
 SEND_READY	EQU	4		;VALUE WHEN READY
@@ -211,7 +214,7 @@ REGSECCNT	EQU	IDEcs0line + IDEa1line				;(0AH)
 REGSECTOR	EQU	IDEcs0line + IDEa1line + IDEa0line		;(0BH)
 REGCYLINDERLSB	EQU	IDEcs0line + IDEa2line				;(0CH)
 REGCYLINDERMSB	EQU	IDEcs0line + IDEa2line + IDEa0line		;(0DH)
-REGSHD	EQU	IDEcs0line + IDEa2line + IDEa1line			;(0EH)
+REGSHD		EQU	IDEcs0line + IDEa2line + IDEa1line		;(0EH)
 REGCOMMAND	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line	;(0FH)
 REGSTATUS	EQU	IDEcs0line + IDEa2line + IDEa1line + IDEa0line
 REGCONTROL	EQU	IDEcs1line + IDEa2line + IDEa1line
@@ -278,7 +281,7 @@ DEBUG EQU FALSE				; For a display of error codes returned from CF-Card drive
 
 ; -------------------------- RAM usage for IDE & RTC Routines (in Z80_MONB.Z80,Z80_MONC.Z80 & Z80_MOND.Z80)  ---------------
 
-IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters 
+IDBUFFER	EQU	RAM_BASE+ 1000H		;512 Bytes @ (C000H+1000H = D000H) for CF-Card paramaters
 buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 
 @DMA		EQU	RAM_BASE + 1F00H	;Remember Stack is at ~DFF0H
@@ -302,6 +305,11 @@ buffer		EQU	RAM_BASE		;Default DMA buffer at C000H
 @CARD_TYPE	EQU	RAM_BASE + 1F26H	;For SD cards
 @CURRENT_DRIVE	EQU	RAM_BASE + 1F28H
 @SEC_ADDRESS	EQU	RAM_BASE + 1F2AH
+
+@RAM_POINTER	EQU	VGA_BASE + 1F2CH	;Will store VGA RAM Pointer at very top or its RAM.
+@LOCAL_X	EQU	VGA_BASE + 1F2EH
+@LOCAL_Y	EQU	VGA_BASE + 1F30H
+
 
 
 ;///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -438,11 +446,10 @@ SETUP_STACK:
 	JP	MEMSZ1			;RETURNS WITH TOP OF RAM IN [HL]
 	DW	AHEAD			;A Return opcode will pick up this address
 AHEAD:
-	LD	L,0F0H			;We will make space for extra RAM parameters (Like RAM_POINTER)
-	LD	SP,HL			;[HL] CONTAINS TOP OF RAM - WORK AREA
+	;;;LD	L,0F0H			;We will make space for extra RAM parameters (Like RAM_POINTER)
+	LD	SP,HL			;[HL] CONTAINS END OF RAM - WORK AREA
 	PUSH	HL
 	POP	IX			;Store stack pointer for below in [IX]
-
 
 	IN	A,(IOBYTE)		;Get IOBYTE 
 	AND	A,00000111B
@@ -465,6 +472,8 @@ TTY_SIGNON:
 	JR	SIGNON_DONE
 
 VGA_SIGNON:
+	LD	A,01H			;Set bit 0 to enable VGA frame buffer
+	OUT	(VGA_PAGE),A		;Send to port
 	CALL	VGA_CLEAR_SCREEN	;Note this will setup the RAM POINTER to VGA_BASE
 	LD	A,0FFH
 	OUT	(VGA_COLOR),A		;Port to set text color to white
@@ -799,23 +808,32 @@ LBYTE:	PUSH	AF
 SF598:	CALL	CONV			;Convert to ASCII AND print it
 	RET
 
-;THIS IS A CALLED ROUTINE USED TO CALCULATE TOP OF RAM IS USED BY
+;THIS IS A CALLED ROUTINE USED TO CALCULATE END OF RAM IS USED BY
 ;THE ERROR ROUTINE TO RESET THE STACK. 
 ;Returns top of RAM in [HL]
 
-MEMSIZ:	PUSH	BC			;SAVE [BC]
-MEMSZ1:	LD	HL,0FFFFH		;START FROM THE TOP DOWN
-MEMSZ2:	LD	A,(HL)
-	CPL 
-	LD	(HL),A
-	CP	(HL)
-	CPL 				;PUT BACK WHAT WAS THERE
-	LD	(HL),A
-	JP	Z,GOTTOP
-	DEC	H			;TRY 100H BYTES LOWER
-	JR	MEMSZ2			;KEEP LOOKING FOR RAM
-GOTTOP:	POP	BC			;RESTORE [BC]
-	RET 
+; WBW: System will always have 64K.  However, top FxxxH is reserved for
+; ROM monitor and ExxxH is reserved for VGA frame buffer.  We need to
+; avoid treating the VGA frame buffer as working RAM.  So, here, we
+; just return DFFFH as the top of RAM.
+
+MEMSIZ:
+MEMSZ1:	LD	HL,0E000H
+	RET
+
+;;;MEMSIZ:	PUSH	BC			;SAVE [BC]
+;;;MEMSZ1:	LD	HL,0FFFFH		;START FROM THE TOP DOWN
+;;;MEMSZ2:	LD	A,(HL)
+;;;	CPL 
+;;;	LD	(HL),A
+;;;	CP	(HL)
+;;;	CPL 				;PUT BACK WHAT WAS THERE
+;;;	LD	(HL),A
+;;;	JP	Z,GOTTOP
+;;;	DEC	H			;TRY 100H BYTES LOWER
+;;;	JR	MEMSZ2			;KEEP LOOKING FOR RAM
+;;;GOTTOP:	POP	BC			;RESTORE [BC]
+;;;	RET 
 
 NIBBLE:	SUB	30H
 	RET	C
@@ -1616,53 +1634,53 @@ VGA_CO:
 	JP	VGA_CO_DONE		;SKIP anything else
 	
 NORMAL_CHAR:				;All other (real) ASCII characters
-	LD	HL,(RAM_POINTER)	;RAM POINTER to [HL] & UPDATE RAM POINTER X,Y
+	LD	HL,(@RAM_POINTER)	;RAM POINTER to [HL] & UPDATE RAM POINTER X,Y
 	LD	(HL),C			;Drop down character
 	INC	HL			;Move to next RAM position
-	LD	(RAM_POINTER),HL
+	LD	(@RAM_POINTER),HL
 
-	LD	A,(LOCAL_X)		;Get current RAM X position
+	LD	A,(@LOCAL_X)		;Get current RAM X position
 	INC	A			;Point to next position
 	CP	A,50H			;Is it past EOL, LOCAL X cursor goes 0,2,3...4FH (80)
 	JR	NZ,NOT_EOL		;LOCAL X goes 0,2,3...4F
 	
-	LD	A,(LOCAL_Y)		;At EOL,  LOCAL Y goes 0,2,3...26H (36)
+	LD	A,(@LOCAL_Y)		;At EOL,  LOCAL Y goes 0,2,3...26H (36)
 	CP	A,TOTAL_VGA_LINES	;Are we on the bottom line
 	JP	Z,BOTTOM_LINE	
 
 	LD	A,0			;Not Bottom line, so MOVE to next line
-	LD	(LOCAL_X),A
-	LD	A,(LOCAL_Y)
+	LD	(@LOCAL_X),A
+	LD	A,(@LOCAL_Y)
 	INC	A
-	LD	(LOCAL_Y),A
+	LD	(@LOCAL_Y),A
 	JR	DONE_NORMAL_CHARACTER
 NOT_EOL:
-	LD	(LOCAL_X),A
+	LD	(@LOCAL_X),A
 	JR	DONE_NORMAL_CHAR
 
 BOTTOM_LINE:				;Special case situation for bottom line (38)
 	CALL	VGA_SCROOL
-	LD	A,(LOCAL_X)		;Get current RAM X position
+	LD	A,(@LOCAL_X)		;Get current RAM X position
 	CP	A,4FH			;Is it the last character on last line
 	JP	Z,LAST_CHAR		;If so special case
 	LD	A,0			;Not last char on last line so just move everything up one line
-	LD	(LOCAL_X),A
+	LD	(@LOCAL_X),A
 	JR	DONE_NORMAL_CHAR
 LAST_CHAR:
 	LD	A,0			;Move to start of line
-	LD	(LOCAL_X),A
+	LD	(@LOCAL_X),A
 	LD	HL,VGA_BASE + (TOTAL_VGA_LINES * 50H)  ;Point to bottom LHS corner
-	LD	(RAM_POINTER),HL
+	LD	(@RAM_POINTER),HL
 	JR	DONE_NORMAL_CHAR
 	
 DONE_NORMAL_CHAR:
-	LD	A,(LOCAL_X)
+	LD	A,(@LOCAL_X)
 	INC	A			;Cursor X goes 1,2,3...4F,0!
 	CP	A,50H
 	JR	NZ,NOT_50
 	LD	A,0
 NOT_50:	OUT	(VGA_CURSOR_X),A
-	LD	A,(LOCAL_Y)		;Cursor Y goes 0,1,2,3...4F
+	LD	A,(@LOCAL_Y)		;Cursor Y goes 0,1,2,3...4F
 	OUT	(VGA_CURSOR_Y),A
 VGA_CO_DONE:	
 	POP	HL
@@ -1672,35 +1690,35 @@ VGA_CO_DONE:
 	RET
 
 	
-DO_CR:	LD	A,(LOCAL_X)
-	LD	HL,(RAM_POINTER)
+DO_CR:	LD	A,(@LOCAL_X)
+	LD	HL,(@RAM_POINTER)
 DO_CR1:	OR	A,A
 	JR	Z,DONE_DO_CR
 	DEC	A
 	DEC	HL
 	JR	DO_CR1
 DONE_DO_CR:
-	LD	(RAM_POINTER),HL
-	LD	(LOCAL_X),A
+	LD	(@RAM_POINTER),HL
+	LD	(@LOCAL_X),A
 	JR	DONE_NORMAL_CHAR
 	
 	
-DO_LF:	LD	A,(LOCAL_Y)
-	LD	HL,(RAM_POINTER)
+DO_LF:	LD	A,(@LOCAL_Y)
+	LD	HL,(@RAM_POINTER)
 	LD	DE,50H			;Add 80 character positions
 	CP	A,TOTAL_VGA_LINES	;My VGA Monitor works best with no more than 38 lines
 	JR	Z,LF_SCROOL
 	ADD	HL,DE
-	LD	(RAM_POINTER),HL
+	LD	(@RAM_POINTER),HL
 	INC	A
-	LD	(LOCAL_Y),A
+	LD	(@LOCAL_Y),A
 	JR	DONE_NORMAL_CHAR
 LF_SCROOL:
 	CALL	VGA_SCROOL	
 	JR	DONE_NORMAL_CHAR
 
 
-DO_TAB:	LD	A,(LOCAL_X)		;Expand out tabs so line numbering is 1,2,3,4.....80
+DO_TAB:	LD	A,(@LOCAL_X)		;Expand out tabs so line numbering is 1,2,3,4.....80
 	CP	A,4FH
 	JR	NZ,DO_TAB1		;Not at end of line, expand tabs
 	LD	C,CR			;At end of line, do CR/FL
@@ -1722,17 +1740,17 @@ DO_8:	LD	C,SPACE			;Print a space
 	JP	DONE_NORMAL_CHAR
 
 
-DO_BS:	LD	A,(LOCAL_X)		;Get current RAM X position
+DO_BS:	LD	A,(@LOCAL_X)		;Get current RAM X position
 	OR	A,A
 	JP	Z,VGA_CO_DONE		;NO BS for first character, just return
-	LD	HL,(RAM_POINTER)	;RAM POINTER to [HL] & BACKUP RAM POINTER X,Y
+	LD	HL,(@RAM_POINTER)	;RAM POINTER to [HL] & BACKUP RAM POINTER X,Y
 	DEC	HL
-	LD	(RAM_POINTER),HL	
+	LD	(@RAM_POINTER),HL	
 	LD	A,SPACE
 	LD	(HL),A
-	LD	A,(LOCAL_X)		;Get current RAM X position
+	LD	A,(@LOCAL_X)		;Get current RAM X position
 	DEC	A
-	LD	(LOCAL_X),A
+	LD	(@LOCAL_X),A
 	IN	A,(VGA_CURSOR_X)
 	DEC	A
 	OUT	(VGA_CURSOR_X),A
@@ -1744,7 +1762,7 @@ DO_FF:
 	JP	DONE_NORMAL_CHAR
 	
 DO_DEL:
-	LD	HL,(RAM_POINTER)	;RAM POINTER to [HL]
+	LD	HL,(@RAM_POINTER)	;RAM POINTER to [HL]
 	LD	A,SPACE
 	LD	(HL),A
 	JP	VGA_CO_DONE	
@@ -1779,13 +1797,13 @@ CLEAR1:	LD	A,SPACE						;     this Z80 monitor stack will get overwritten
 	CP	A,0
 	JR	NZ,CLEAR1
 	XOR	A,A
-	LD	(LOCAL_X),A		;0, RAM X offset
-	LD	(LOCAL_Y),A		;0, RAM Y offset
+	LD	(@LOCAL_X),A		;0, RAM X offset
+	LD	(@LOCAL_Y),A		;0, RAM Y offset
 	OUT	(VGA_CURSOR_Y),A	;0, Cursor Y at top RH corner. Cursor Y goes:- 0,1,2,3,...80	
 	INC	A
 	OUT	(VGA_CURSOR_X),A	;1, Cursor X goes:- 1,2,3,...79,0
 	LD	HL,VGA_BASE
-	LD	(RAM_POINTER),HL
+	LD	(@RAM_POINTER),HL
 	RET
 	
 
@@ -2048,7 +2066,7 @@ SCCINIT_B:
 ;-----------------------------------------------------------------------------------------------------
 ;
 SIGNON_MSG:	DB SCROLL,QUIT,NO_ENH,FAST,BELL,'$'		
-SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.07a J.Monahan, 8/2/2024$' 	
+SIGNON_MSG1:	DB CR,LF,LF,'FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.08 J.Monahan, 9/4/2024$' 	
 
 MAIN_MENU_MSG:	DB	CR,LF,LF
   		DB	'A=Memmap     D=Show RAM   E=Echo Text   F=Fill RAM '
@@ -2061,7 +2079,7 @@ MAIN_MENU_MSG:	DB	CR,LF,LF
 		DB	CR,LF
 		DB      'V=Verify RAM X=XModem     Y=Swap RAM    U=SD Card' 
 		DB	CR,LF
-		DB	'@=Flush Printer           Z=Top Of RAM',CR,LF,LF,'$'
+		DB	'@=Flush Printer           Z=End of RAM',CR,LF,LF,'$'
 
 SPEAK_CLEAR	DB	CR,CR,CR,'$'
 SMSG_SP:	DB	'THE Z80 ROM MONITOR VERSION 3.0$'

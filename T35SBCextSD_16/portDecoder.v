@@ -50,8 +50,8 @@ module portDecoder
     output          SDRead_cs,
     output          MMUPageEnWrEn,
     output          MMURegFileWrEn,
-    output          MMURegFileRdEn
-
+    output          MMURegFileRdEn,
+    output          outVRamCtl_cs
     );
     
     assign outPortFF_cs         = (address[7:0] == 8'hff) && iowrite;
@@ -91,4 +91,5 @@ module portDecoder
     assign MMUPageEnWrEn        = ((address == 16'h7c) & iowrite) ? (1'b1) : (1'b0);
     assign MMURegFileWrEn       = (((address >= 16'h78) && (address <= 16'h7b)) & iowrite )? (1'b1) : (1'b0);
     assign MMURegFileRdEn       = (((address >= 16'h78) && (address <= 16'h7b)) & ioread )? (1'b1) : (1'b0);
+    assign outVRamCtl_cs        = (address[7:0] == 8'h08) & iowrite;   // Port 07 out 
     endmodule
