@@ -8,15 +8,17 @@ RomWBW from a disk image via CF Card or SD Card.
 
 The T35SBCextSD_16 directory contains an Efinity project file set.  Use Efinity to
 build the project.  After a successful build, the outflow directory will contain
-both .bit and .hex files for programming on a T35 FPGA.
+both T35SBCextSD_16.bit and T35SBCextSD_16.hex files for programming on a T35 FPGA.
 
-The Efinity project includes a Z80 monitor program.  The FPGAMON directory contains
+The Efinity project already includes the Z80 monitor program.  If you want to modify the
+monitor, you will find the source in the FPGAMON directory.  This directory contains
 the files required to build the monitor binary file which is called fpgamon.inithex.
 To buld the monitor binary, use Windows to run the Build.cmd batch file in the
 Source directory of FPGAMON.  The build process will automatically copy the
 resulting fpgamon.inithex file into the T35SBCextSD_16.  You will need to run a
 new Efinity build of T35SBCextSD_16 to embed the updated monitor binary in the
-firmware.
+firmware.  You do **not** need to build the monitor unless you want to make
+changes to it.
 
 ## Installing & Running RomWBW
 
@@ -27,19 +29,20 @@ In summary, you will need to do two things:
 
 After building the T35 firmware as described above, you will need to use the Efinity
 Programmer to program the T35 module.  Use the programmer to write the T35SBCextSD_16.hex
-file from the outflow directory.
+file from the outflow directory.  The process of using Efinity to program your
+T35 is described at <https://github.com/s100projects/T35_FPGA_MODULE>.
 
 Once this first step is done, you should be able to boot your T35 FPGA board.
 It will boot into a variant of John's monitor running at 9600 baud.  The version
-number of the monitor should be v3.05.  This updated monitor replaces the CP/M load
+number of the monitor should be v3.08a.  This updated monitor replaces the CP/M load
 options with RomWBW load options (N & P).  Loading RomWBW from either SD Card or CF Card
 is supported.  You can set the right-most dip switch as desired to boot from either
 a Propeller console or the onboard USB serial port.
 
 Now, download a RomWBW disk image from the [RomWBW Repository](https://github.com/wwarthen/RomWBW)
-You will need to download the latest Development Snapshot from the [RomWBW Releases Page](https://github.com/wwarthen/RomWBW/releases).
+You will need to download RomWBW Version 3.5.0 or later from the [RomWBW Releases Page](https://github.com/wwarthen/RomWBW/releases).
 Use the dropdown to access the assets of the release and download the package file which will be
-called something similar to RomWBW-v3.5.0-dev.60-Package.zip.  Within the Binary directory within
+called something similar to RomWBW-v3.5.0-Package.zip.  Within the Binary directory within
 the .zip file, you will find a file called "FZ80_std_hd1k_combo.img".  This is a binary disk image file
 that must be written to either a CF or SD Card starting at the first sector.
 You can do this with Win32DiskImager on Windows or dd on Linux.
@@ -52,12 +55,13 @@ to the same device as the monitor was using.
 Below is a session log from boot through the launch of RomWBW.
 
 ```
-FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.05 J.Monahan, 7/5/2024
+FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.08a J.Monahan, 9/4/2024
 SP=EFF0  IOBYTE= 11100110
 
 ->K
 
-FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.05 J.Monahan, 7/5/2024
+FPGA SBC-Z80 FPGA-ROM MONITOR (@ F000H) V3.08a J.Monahan, 9/4/2024
+SP=E000  IOBYTE= 11101110
 
 A=Memmap     D=Show RAM   E=Echo Text   F=Fill RAM
 G=Goto       I=IDE Menu   J=Test RAM    K=Menu
@@ -73,14 +77,14 @@ Done.  Use 'G0' to launch.
 ->G0
 
 
-RomWBW HBIOS v3.5.0-dev.60, 2024-07-22
+RomWBW HBIOS v3.5.0, 2025-04-04
 
 S100 FPGA Z80 [FZ80_std] Z80 @ 8.000MHz
 0 MEM W/S, 1 I/O W/S, Z2 MMU
 0KB ROM, 512KB RAM, HEAP=0x4CB4
 
 SSER: IO=0x34
-DS5RTC: IO=0x68 Tue 2024-07-23 11:30:13
+DS5RTC: IO=0x68 Tue 2025-04-04 11:30:13
 MD: UNITS=1 RAMDISK=256KB
 PPIDE: IO=0x30
 PPIDE0: ATA LBA BLOCKS=0x003B8E00 SIZE=1905MB
