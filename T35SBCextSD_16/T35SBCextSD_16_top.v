@@ -1237,15 +1237,16 @@ parameter   ioWaitvalue = 8'hff;
 //  Changed clock divider to 3:2, resulting in T80 clock of 6.25MHz
 
 // changed clock divider to 2:2, resulting in T80 clock of 
-  
-assign outPrn[0] = T80Clock;     //!s100_PHI;
-assign outPrn[1] = z80_n_rd;
-assign outPrn[2] = z80_n_mreq;
-assign outPrn[3] = z80_n_m1 | z80_n_mreq;
-assign outPrn[4] = busin;
-assign outPrn[5] = psyncend;
-assign outPrn[6] = s100_pSTVAL;
-assign outPrn[7] = s100_sOUT;
+/*  
+assign outPrn[0] = 1'b0;        //T80Clock;     //!s100_PHI;
+assign outPrn[1] = 1'b0;        //z80_n_rd;
+assign outPrn[2] = 1'b0;        //z80_n_mreq;
+assign outPrn[3] = 1'b0;        //z80_n_m1 | z80_n_mreq;
+assign outPrn[4] = 1'b1;        //busin;
+assign outPrn[5] = 1'b1;        //psyncend;
+assign outPrn[6] = 1'b1;        //s100_pSTVAL;
+assign outPrn[7] = 1'b1;        //s100_sOUT;
+*/
 
 ParShiftReg     iowait(
     .clk        (cpuClock),         //(T80Clock),                  // shift on Positive clock edge////////////////////////////////////////////////////////////////////////
@@ -1523,16 +1524,16 @@ n_bitLatchClr2      #(8)
 /********************************************************************************
 *   Output Port C7   Parallel Printer DATA OUT Port                             *
 ********************************************************************************/
-/*
+
 n_bitReg    #(8)
     PrinterData(                        // Printer DATA OUTPUT LATCH
      .load      (!printer_cs),               // printer data latch select//////////////////
      .clock     (!printer_cs),     ///////////////////////////////////////////////////////
      .clr       (n_reset & !inPrnAck),
      .inData    (cpuDataOut),               // CPU data output to register
-     .regOut    (outPrn));                  // register output to Printer FPGA output
-*/        
-dff     PtrStrobe(                     // Printer strobe output latch
+     .regOut    (outPrn));                  // register output to Printer FPGA output C7
+        
+dff     PtrStrobe(                     // Printer strobe output latch Port C6
         .clk    (pll0_250MHz),
         .en        (printerStrobe_cs), 
         .rst_n      (n_reset),     
