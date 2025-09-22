@@ -43,7 +43,7 @@ Now, download a RomWBW disk image from the [RomWBW Repository](https://github.co
 You will need to download RomWBW Version 3.5.0 or later from the [RomWBW Releases Page](https://github.com/wwarthen/RomWBW/releases).
 Use the dropdown to access the assets of the release and download the package file which will be
 called something similar to RomWBW-v3.5.0-Package.zip.  Within the Binary directory within
-the .zip file, you will find a file called "FZ80_std_hd1k_combo.img".  This is a binary disk image file
+the .zip file, you will find a file called "SZ80_fpga_hd1k_combo.img".  This is a binary disk image file
 that must be written to either a CF or SD Card starting at the first sector.
 You can do this with Win32DiskImager on Windows or dd on Linux.
 
@@ -79,7 +79,7 @@ Done.  Use 'G0' to launch.
 
 RomWBW HBIOS v3.5.0, 2025-04-04
 
-S100 FPGA Z80 [FZ80_std] Z80 @ 8.000MHz
+S100 FPGA Z80 [SZ80_fpga] Z80 @ 8.000MHz
 0 MEM W/S, 1 I/O W/S, Z2 MMU
 0KB ROM, 512KB RAM, HEAP=0x4CB4
 
@@ -89,7 +89,7 @@ MD: UNITS=1 RAMDISK=256KB
 PPIDE: IO=0x30
 PPIDE0: ATA LBA BLOCKS=0x003B8E00 SIZE=1905MB
 PPIDE1: NO MEDIA
-SD: MODE=FZ80 IO=0x6C DEVICES=2
+SD: MODE=T35 IO=0x6C DEVICES=2
 SD0: SDHC NAME=SD08G BLOCKS=0x00ECE000 SIZE=7580MB
 SD1: SDHC NAME=SP32G BLOCKS=0x03B72400 SIZE=30436MB
 SCON: IO=0x00 80X40 TEXT (ANSI)
@@ -105,7 +105,7 @@ Disk 3      SD0:        SD Card           7580MB,LBA
 Disk 4      SD1:        SD Card           30436MB,LBA
 
 
-S100 FPGA Z80 [FZ80_std] Boot Loader
+S100 FPGA Z80 [SZ80_fpga] Boot Loader
 
 Boot [H=Help]:
 ```
