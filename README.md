@@ -43,7 +43,7 @@ Now, download a RomWBW disk image from the [RomWBW Repository](https://github.co
 You will need to download RomWBW Version 3.5.0 or later from the [RomWBW Releases Page](https://github.com/wwarthen/RomWBW/releases).
 Use the dropdown to access the assets of the release and download the package file which will be
 called something similar to RomWBW-v3.5.0-Package.zip.  Within the Binary directory within
-the .zip file, you will find a file called "SZ80_fpga_hd1k_combo.img".  This is a binary disk image file
+the .zip file, you will find a file called "SZ80_t35_hd1k_combo.img".  This is a binary disk image file
 that must be written to either a CF or SD Card starting at the first sector.
 You can do this with Win32DiskImager on Windows or dd on Linux.
 
@@ -79,7 +79,7 @@ Done.  Use 'G0' to launch.
 
 RomWBW HBIOS v3.5.0, 2025-04-04
 
-S100 FPGA Z80 [SZ80_fpga] Z80 @ 8.000MHz
+S100 FPGA Z80 [SZ80_t35] Z80 @ 8.000MHz
 0 MEM W/S, 1 I/O W/S, Z2 MMU
 0KB ROM, 512KB RAM, HEAP=0x4CB4
 
